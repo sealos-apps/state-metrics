@@ -93,9 +93,9 @@ func (dc *DomainChecker) CheckIPs(
 		LastChecked: now,
 	}
 
-	// First, get the IPs for the domain
-	var ips []string
-	if dc.checkDNS || dc.checkHTTP {
+	// First, get the IPs for the domain. Configured IPs bypass DNS resolution.
+	ips := domain.ips
+	if len(ips) == 0 && (dc.checkDNS || dc.checkHTTP) {
 		dnsResult := checkDNSWithFilter(
 			ctx,
 			domain.target.Host,

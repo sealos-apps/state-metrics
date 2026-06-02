@@ -1,12 +1,12 @@
 # Domain Collector
 
-The Domain collector monitors domain health by performing DNS lookups, HTTP checks, and certificate validation.
+The Domain collector monitors domain health by performing DNS lookups or fixed-IP checks, HTTP checks, and certificate validation.
 
 ## Features
 
 - **Domain-level metrics**: Aggregate health status for each domain
-- **IP-level metrics**: Detailed health status for each resolved IP
-- **DNS resolution tracking**: Monitors DNS resolution success and IP counts
+- **IP-level metrics**: Detailed health status for each resolved or configured IP
+- **DNS resolution tracking**: Monitors DNS resolution success and IP counts when fixed IPs are not configured
 - **Failure exposure**: DNS resolution failures and empty IP lists are exposed as unhealthy metrics
 - **Concurrent checks**: Checks multiple domains concurrently for efficiency
 - **Error classification**: Categorizes errors for better alerting and debugging
@@ -23,6 +23,9 @@ collectors:
         skipTLSVerify: false
         followHTTPRedirects: true
       - endpoint: internal.example.local:8443
+        ips:
+          - 10.0.0.12
+          - 10.0.0.13
         skipTLSVerify: true
         followHTTPRedirects: false
         path: /healthz?ready=true
@@ -43,7 +46,7 @@ collectors:
 `domains` supports mixed entries:
 
 - Legacy string entries such as `example.com` or `api.example.com:8443`
-- Object entries such as `{ endpoint: internal.example.local:8443, skipTLSVerify: true, followHTTPRedirects: false, path: /healthz, method: GET, expectedStatusCodes: [200, 204] }`
+- Object entries such as `{ endpoint: internal.example.local:8443, ips: [10.0.0.12], skipTLSVerify: true, followHTTPRedirects: false, path: /healthz, method: GET, expectedStatusCodes: [200, 204] }`
 
 ### Configuration Fields
 
@@ -51,6 +54,7 @@ collectors:
 |-------|------|---------|-------------|
 | `domains` | `[]string` or `[]object` | `[]` | List of domains to monitor. Entries may be strings or objects with per-domain options |
 | `domains[].endpoint` | string | - | Domain endpoint in `host` or `host:port` format |
+| `domains[].ips` | []string | `[]` | Fixed IPs to check for this domain. When set, DNS lookup is skipped for this domain |
 | `domains[].skipTLSVerify` | bool | `false` | Skip TLS certificate verification for this domain during HTTPS and cert checks |
 | `domains[].followHTTPRedirects` | bool | `true` | Follow HTTP redirects for this domain during HTTP checks |
 | `domains[].path` | string | `/` | HTTP request path used during HTTP checks. Query strings are supported |
@@ -84,7 +88,7 @@ Notes:
 
 - `COLLECTORS_DOMAIN_DOMAINS` only supports the legacy comma-separated string format.
 - If `COLLECTORS_DOMAIN_DOMAINS` is set, it overrides the YAML `domains` list.
-- `skipTLSVerify`, `followHTTPRedirects`, `path`, `method`, `headers`, and `expectedStatusCodes` are only configurable through YAML object entries.
+- `ips`, `skipTLSVerify`, `followHTTPRedirects`, `path`, `method`, `headers`, and `expectedStatusCodes` are only configurable through YAML object entries.
 
 ## Metrics
 
@@ -98,8 +102,8 @@ Notes:
 **Description:** Domain-level health metrics providing an overview of the domain's resolution and IP health status.
 
 **Metric Types:**
-- `resolve`: DNS resolution status (1=success, 0=failure)
-- `ip_count`: Total number of IPs resolved for the domain
+- `resolve`: DNS resolution or fixed-IP selection status (1=success, 0=failure)
+- `ip_count`: Total number of resolved or configured IPs for the domain
 - `healthy_ips`: Number of IPs that passed all enabled health checks
 - `unhealthy_ips`: Number of IPs that failed one or more health checks
 
@@ -242,6 +246,8 @@ An IP is considered **unhealthy** if:
 
 - TLS certificate checks are performed independently for each resolved IP.
 - DNS results can be filtered globally with `includeIPv4` and `includeIPv6`.
+- When `domains[].ips` is set, the collector skips DNS for that domain and checks the configured IPs. HTTP Host, request URL host, and TLS SNI still use `domains[].endpoint`.
+- `includeIPv4` and `includeIPv6` filter DNS results only; fixed `ips` are checked as configured.
 - HTTP checks and certificate checks both honor the per-domain `skipTLSVerify` option.
 - HTTP checks use per-domain `path`, `method`, `headers`, and `expectedStatusCodes` when configured.
 - When `expectedStatusCodes` is empty, HTTP checks keep the legacy behavior where any `2xx`, `3xx`, or `4xx` status is treated as healthy.

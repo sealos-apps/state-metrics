@@ -127,6 +127,7 @@ func TestNewRuntimeConfig(t *testing.T) {
 			{
 				Endpoint:             "http://registry.example.com:5000",
 				Info:                 "internal proxy",
+				IPs:                  []string{" 127.0.0.1 ", "127.0.0.1", "::1"},
 				Repository:           "/library/alpine/",
 				Reference:            "3.20",
 				ManifestAcceptHeader: "application/vnd.oci.image.manifest.v1+json",
@@ -159,6 +160,9 @@ func TestNewRuntimeConfig(t *testing.T) {
 		first.target.Scheme != "http" ||
 		first.target.Host != "registry.example.com" ||
 		first.target.Port != 5000 ||
+		len(first.ips) != 2 ||
+		first.ips[0] != "127.0.0.1" ||
+		first.ips[1] != "::1" ||
 		first.repository != "library/alpine" ||
 		first.reference != "3.20" ||
 		first.manifestAcceptHeader != "application/vnd.oci.image.manifest.v1+json" ||
@@ -229,5 +233,16 @@ func TestParseMonitoredRegistryRequiresRepositoryAndReference(t *testing.T) {
 				t.Fatalf("expected error for %#v", tt.cfg)
 			}
 		})
+	}
+}
+
+func TestParseMonitoredRegistryRejectsInvalidIP(t *testing.T) {
+	if _, err := parseMonitoredRegistry(RegistryConfig{
+		Endpoint:   "http://registry.example.com:5000",
+		IPs:        []string{"10.0.0.1", "not-an-ip"},
+		Repository: "library/busybox",
+		Reference:  "latest",
+	}); err == nil {
+		t.Fatalf("expected error for invalid configured IP")
 	}
 }

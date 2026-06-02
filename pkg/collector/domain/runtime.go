@@ -23,6 +23,7 @@ type DomainTarget struct {
 type monitoredDomain struct {
 	endpoint            string
 	target              DomainTarget
+	ips                 []string
 	skipTLSVerify       bool
 	followHTTPRedirects bool
 	httpMethod          string
@@ -33,6 +34,7 @@ type monitoredDomain struct {
 
 type monitoredDomainConfig struct {
 	Endpoint            string            `mapstructure:"endpoint"`
+	IPs                 []string          `mapstructure:"ips"`
 	SkipTLSVerify       bool              `mapstructure:"skipTLSVerify"`
 	FollowHTTPRedirects *bool             `mapstructure:"followHTTPRedirects"`
 	HTTPPath            string            `mapstructure:"path"`
@@ -165,6 +167,13 @@ func parseMonitoredDomainMap(value map[string]any) (monitoredDomain, error) {
 		return monitoredDomain{}, nil
 	}
 
+	ips, err := normalizeDomainIPs(cfg.IPs, cfg.Endpoint)
+	if err != nil {
+		return monitoredDomain{}, err
+	}
+
+	domain.ips = ips
+
 	domain.skipTLSVerify = cfg.SkipTLSVerify
 	if cfg.FollowHTTPRedirects != nil {
 		domain.followHTTPRedirects = *cfg.FollowHTTPRedirects
@@ -192,6 +201,37 @@ func parseMonitoredDomainMap(value map[string]any) (monitoredDomain, error) {
 	}
 
 	return domain, nil
+}
+
+func normalizeDomainIPs(values []string, endpoint string) ([]string, error) {
+	ips := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+
+		ip := net.ParseIP(value)
+		if ip == nil {
+			return nil, fmt.Errorf(
+				"invalid domain entry %q: invalid ip %q",
+				endpoint,
+				value,
+			)
+		}
+
+		normalized := ip.String()
+		if _, exists := seen[normalized]; exists {
+			continue
+		}
+
+		seen[normalized] = struct{}{}
+		ips = append(ips, normalized)
+	}
+
+	return ips, nil
 }
 
 func normalizeExpectedStatusCodes(statusCodes []int) ([]int, error) {

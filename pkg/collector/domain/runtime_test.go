@@ -236,6 +236,7 @@ func TestNewRuntimeConfig_ObjectDomains(t *testing.T) {
 			},
 			map[string]any{
 				"endpoint":            "internal.example.local:8443",
+				"ips":                 []any{" 127.0.0.1 ", "127.0.0.1", "::1"},
 				"skipTLSVerify":       true,
 				"followHTTPRedirects": true,
 			},
@@ -266,6 +267,9 @@ func TestNewRuntimeConfig_ObjectDomains(t *testing.T) {
 	if second.endpoint != "internal.example.local:8443" ||
 		second.target.Host != "internal.example.local" ||
 		second.target.Port != 8443 ||
+		len(second.ips) != 2 ||
+		second.ips[0] != "127.0.0.1" ||
+		second.ips[1] != "::1" ||
 		!second.skipTLSVerify ||
 		!second.followHTTPRedirects {
 		t.Fatalf("unexpected second domain: %#v", second)
@@ -493,6 +497,16 @@ func TestParseMonitoredDomainMap_InvalidExpectedStatusCode(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for invalid expected status code")
+	}
+}
+
+func TestParseMonitoredDomainMap_InvalidIP(t *testing.T) {
+	_, err := parseMonitoredDomainMap(map[string]any{
+		"endpoint": "internal.example.local:8443",
+		"ips":      []any{"10.0.0.1", "not-an-ip"},
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid configured IP")
 	}
 }
 

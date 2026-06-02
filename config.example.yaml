@@ -121,6 +121,9 @@ collectors:
       - endpoint: example.com
         skipTLSVerify: false
       - endpoint: internal.example.local:8443
+        ips:
+          - 10.0.0.12
+          - 10.0.0.13
         skipTLSVerify: true
         path: /healthz?ready=true
         method: GET
@@ -161,6 +164,9 @@ collectors:
         manifestAcceptHeader: application/vnd.docker.distribution.manifest.v2+json
       - endpoint: http://registry-proxy.example.com:5000
         info: "internal proxy"
+        ips:
+          - 10.0.0.12
+          - 10.0.0.13
         repository: library/alpine
         reference: latest
         headers:

@@ -24,6 +24,7 @@ type monitoredRegistry struct {
 	endpoint             string
 	info                 string
 	target               registryTarget
+	ips                  []string
 	repository           string
 	reference            string
 	manifestAcceptHeader string
@@ -78,6 +79,11 @@ func parseMonitoredRegistry(cfg RegistryConfig) (monitoredRegistry, error) {
 		return monitoredRegistry{}, err
 	}
 
+	ips, err := normalizeRegistryIPs(cfg.IPs, cfg.Endpoint)
+	if err != nil {
+		return monitoredRegistry{}, err
+	}
+
 	repository := normalizeRepository(cfg.Repository)
 	if repository == "" {
 		return monitoredRegistry{}, fmt.Errorf(
@@ -113,11 +119,43 @@ func parseMonitoredRegistry(cfg RegistryConfig) (monitoredRegistry, error) {
 		endpoint:             strings.TrimSpace(cfg.Endpoint),
 		info:                 strings.TrimSpace(cfg.Info),
 		target:               target,
+		ips:                  ips,
 		repository:           repository,
 		reference:            reference,
 		manifestAcceptHeader: manifestAcceptHeader,
 		headers:              headers,
 	}, nil
+}
+
+func normalizeRegistryIPs(values []string, endpoint string) ([]string, error) {
+	ips := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+
+		ip := net.ParseIP(value)
+		if ip == nil {
+			return nil, fmt.Errorf(
+				"invalid registry proxy entry %q: invalid ip %q",
+				endpoint,
+				value,
+			)
+		}
+
+		normalized := ip.String()
+		if _, exists := seen[normalized]; exists {
+			continue
+		}
+
+		seen[normalized] = struct{}{}
+		ips = append(ips, normalized)
+	}
+
+	return ips, nil
 }
 
 func parseRegistryTarget(endpoint string) (registryTarget, error) {

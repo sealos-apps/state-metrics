@@ -151,6 +151,8 @@ collectors:
     # domains:
     #   - example.com
     #   - endpoint: internal.example.local:8443
+    #     ips:
+    #       - 10.0.0.12
     #     skipTLSVerify: true
     #     followHTTPRedirects: false
     #     path: /healthz?ready=true
@@ -172,6 +174,8 @@ collectors:
     # registries:
     #   - endpoint: http://67.21.84.122:5000
     #     info: public mirror proxy
+    #     ips:
+    #       - 67.21.84.122
     #     repository: library/busybox
     #     reference: latest
     #     manifestAcceptHeader: application/vnd.docker.distribution.manifest.v2+json

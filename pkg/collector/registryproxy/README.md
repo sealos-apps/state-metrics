@@ -5,7 +5,7 @@ RegistryProxy Collector 用于检测 Docker Registry 镜像代理的可用性。
 - `GET /v2/`：确认 registry API 是否可访问。
 - `GET /v2/<repository>/manifests/<reference>`：确认指定镜像 manifest 是否可以成功获取。
 
-插件会先解析配置中的代理仓库地址，得到实际访问的 `scheme`、`host`、`port`、`repository`、`reference` 和 `info`。每轮检查时，它会解析当前配置域名使用的 IP，并对每个解析到的 IP 分别发起 API 和 manifest 请求。最终指标会同时包含配置元信息、当前 IP、检查类型、HTTP 状态码和错误类型。
+插件会先解析配置中的代理仓库地址，得到实际访问的 `scheme`、`host`、`port`、`repository`、`reference`、`info` 和可选固定 `ips`。每轮检查时，配置了 `ips` 的 registry 会按固定 IP 发起 API 和 manifest 请求；未配置 `ips` 的 registry 会解析当前域名使用的 IP 并逐个检查。最终指标会同时包含配置元信息、当前 IP、检查类型、HTTP 状态码和错误类型。
 
 ## 工作流程总览
 
@@ -127,6 +127,9 @@ collectors:
         manifestAcceptHeader: application/vnd.docker.distribution.manifest.v2+json
       - endpoint: http://registry-proxy.example.com:5000
         info: internal registry proxy
+        ips:
+          - 10.0.0.12
+          - 10.0.0.13
         repository: library/alpine
         reference: latest
         headers:
@@ -145,6 +148,7 @@ collectors:
 | `registries[].manifestAcceptHeader` | `application/vnd.docker.distribution.manifest.v2+json` |
 | `registries[].headers` | `{}` |
 | `registries[].info` | `""` |
+| `registries[].ips` | `[]` |
 
 ### registry 配置格式
 
@@ -154,6 +158,9 @@ collectors:
 registries:
   - endpoint: http://registry-proxy.example.com:5000
     info: internal proxy
+    ips:
+      - 10.0.0.12
+      - 10.0.0.13
     repository: library/busybox
     reference: latest
     manifestAcceptHeader: application/vnd.docker.distribution.manifest.v2+json
@@ -185,6 +192,22 @@ http://[2001:db8::1]:5000
 
 当前只支持 `http` 和 `https`。`endpoint` 必须同时包含协议和端口，例如 `http://a.com:88`。如果 `endpoint` 中缺少协议、缺少端口，或者包含 path、query、fragment、user info，都会被认为是非法配置，因为插件会自行构造 `/v2/` 和 manifest API 路径。
 
+### 固定 IP 配置
+
+`ips` 用于指定实际拨号目标：
+
+```yaml
+registries:
+  - endpoint: https://registry-proxy.example.com:5443
+    ips:
+      - 10.0.0.12
+      - 10.0.0.13
+    repository: library/busybox
+    reference: latest
+```
+
+配置 `ips` 后，插件使用 `endpoint` 的 scheme、host 和 port 构造请求 URL，HTTP Host 和 HTTPS SNI 仍使用 `endpoint` 中的 host，TCP 连接拨到 `ips` 中的地址。`ips` 支持 IPv4 和 IPv6，重复值会被去重。
+
 ### 环境变量覆盖
 
 支持以下环境变量：
@@ -204,7 +227,7 @@ COLLECTORS_REGISTRYPROXY_CHECK_INTERVAL=1m
 注意：
 
 - `registries` 是结构化对象数组，只能通过 YAML 配置。
-- `endpoint`、`repository`、`reference`、`info`、`manifestAcceptHeader` 和 `headers` 不能通过环境变量覆盖。
+- `endpoint`、`ips`、`repository`、`reference`、`info`、`manifestAcceptHeader` 和 `headers` 不能通过环境变量覆盖。
 
 ## 单轮检查流程
 
@@ -222,9 +245,11 @@ RegistryChecker.CheckIPs(ctx, registry, logger)
 
 检查结果先写入本轮临时 map。等所有 goroutine 完成后，再一次性替换 collector 内部缓存。这样 Prometheus scrape 时读到的始终是上一轮完整结果，不会读到半更新状态。
 
-### 2. DNS 解析
+### 2. 选择检查 IP
 
-每个 registry proxy 首先执行 DNS 解析：
+如果 registry 配置了 `ips`，插件直接使用这组固定 IP。此时 `ResolveOk = true`，`IPCount` 等于固定 IP 数量，`sealos_registry_proxy_dns_status` 表示固定 IP 列表可用。
+
+如果 registry 未配置 `ips`，插件执行 DNS 解析：
 
 ```text
 resolveRegistryIPs(ctx, registry.target.Host, checkTimeout)
@@ -251,7 +276,7 @@ UnhealthyIPs = 0
 
 ```text
 请求 URL: http://registry-proxy.example.com:5000/v2/
-实际拨号: <resolved-ip>:5000
+实际拨号: <configured-or-resolved-ip>:5000
 HTTP Host: registry-proxy.example.com:5000
 ```
 

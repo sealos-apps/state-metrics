@@ -116,20 +116,25 @@ func (rc *RegistryChecker) CheckIPs(
 		LastChecked: now,
 	}
 
-	ips, dnsErr := resolveRegistryIPs(ctx, registry.target.Host, rc.timeout)
-	if dnsErr != "" {
-		logger.WithFields(log.Fields{
-			"endpoint": registry.endpoint,
-			"host":     registry.target.Host,
-			"port":     registry.target.Port,
-			"error":    dnsErr,
-		}).Warn("Registry proxy DNS resolution failed")
+	ips := registry.ips
+	if len(ips) == 0 {
+		resolvedIPs, dnsErr := resolveRegistryIPs(ctx, registry.target.Host, rc.timeout)
+		if dnsErr != "" {
+			logger.WithFields(log.Fields{
+				"endpoint": registry.endpoint,
+				"host":     registry.target.Host,
+				"port":     registry.target.Port,
+				"error":    dnsErr,
+			}).Warn("Registry proxy DNS resolution failed")
 
-		registryHealth.ResolveOk = false
+			registryHealth.ResolveOk = false
 
-		return registryHealth, []*IPHealth{
-			newRegistryIPHealth(registry, "", now, false, dnsErr, ErrorTypeDNS),
+			return registryHealth, []*IPHealth{
+				newRegistryIPHealth(registry, "", now, false, dnsErr, ErrorTypeDNS),
+			}
 		}
+
+		ips = resolvedIPs
 	}
 
 	if len(ips) == 0 {

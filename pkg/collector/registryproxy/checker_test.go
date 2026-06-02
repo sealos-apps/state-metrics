@@ -144,6 +144,44 @@ func TestRegistryCheckerAPIUnauthorizedIsReachable(t *testing.T) {
 	}
 }
 
+func TestRegistryCheckerUsesConfiguredIPs(t *testing.T) {
+	var sawHost string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawHost = r.Host
+
+		switch r.URL.Path {
+		case "/v2/", "/v2/library/busybox/manifests/latest":
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	registry := mustLocalRegistry(t, server)
+	registry.target.Host = "registry.example.invalid"
+	registry.endpoint = "http://registry.example.invalid:" + strconv.Itoa(registry.target.Port)
+	registry.ips = []string{"127.0.0.1"}
+
+	checker := NewRegistryChecker(5 * time.Second)
+	health, ipHealths := checker.CheckIPs(context.Background(), registry, log.NewEntry(log.New()))
+
+	if !health.ResolveOk || health.IPCount != 1 || health.HealthyIPs != 1 ||
+		health.UnhealthyIPs != 0 {
+		t.Fatalf("unexpected registry health with configured IPs: %#v", health)
+	}
+
+	if len(ipHealths) != 1 || ipHealths[0].IP != "127.0.0.1" || !ipHealths[0].DNSOk {
+		t.Fatalf("unexpected IP health with configured IPs: %#v", ipHealths)
+	}
+
+	wantHost := "registry.example.invalid:" + strconv.Itoa(registry.target.Port)
+	if sawHost != wantHost {
+		t.Fatalf("request Host = %q, want %q", sawHost, wantHost)
+	}
+}
+
 func mustLocalRegistry(t *testing.T, server *httptest.Server) monitoredRegistry {
 	t.Helper()
 

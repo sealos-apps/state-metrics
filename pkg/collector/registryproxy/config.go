@@ -6,6 +6,7 @@ import "time"
 type RegistryConfig struct {
 	Endpoint             string            `yaml:"endpoint"`
 	Info                 string            `yaml:"info"`
+	IPs                  []string          `yaml:"ips"`
 	Repository           string            `yaml:"repository"`
 	Reference            string            `yaml:"reference"`
 	ManifestAcceptHeader string            `yaml:"manifestAcceptHeader"`
