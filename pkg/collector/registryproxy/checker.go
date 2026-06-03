@@ -364,7 +364,7 @@ func registryTLSConfig(registry monitoredRegistry, base *tls.Config) *tls.Config
 	return tlsConfig
 }
 
-func registryDialAddress(registry monitoredRegistry, ip string, addr string) (string, error) {
+func registryDialAddress(registry monitoredRegistry, ip, addr string) (string, error) {
 	dialHost, dialPort, err := net.SplitHostPort(addr)
 	if err != nil {
 		return "", err

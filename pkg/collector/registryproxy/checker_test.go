@@ -223,7 +223,16 @@ func TestRegistryCheckerUsesConfiguredIPsForHTTPS(t *testing.T) {
 	}
 
 	checker := NewRegistryChecker(5 * time.Second)
-	checker.tlsConfig = server.Client().Transport.(*http.Transport).TLSClientConfig
+
+	transport, ok := server.Client().Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf(
+			"server client transport has type %T, want *http.Transport",
+			server.Client().Transport,
+		)
+	}
+
+	checker.tlsConfig = transport.TLSClientConfig
 
 	health, ipHealths := checker.CheckIPs(context.Background(), registry, log.NewEntry(log.New()))
 
