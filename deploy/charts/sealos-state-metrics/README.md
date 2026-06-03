@@ -93,7 +93,7 @@ The following table lists the configurable parameters of the chart and their def
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `config.logLevel` | Log level | `info` |
-| `config.logFormat` | Log format (json/text) | `json` |
+| `config.logFormat` | Log format (json/text) | `text` |
 | `config.debug` | Enable debug mode | `false` |
 | `config.metricsPath` | Metrics endpoint path | `/metrics` |
 | `config.healthPath` | Health endpoint path | `/health` |

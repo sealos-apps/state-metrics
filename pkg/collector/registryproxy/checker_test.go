@@ -182,6 +182,70 @@ func TestRegistryCheckerUsesConfiguredIPs(t *testing.T) {
 	}
 }
 
+func TestRegistryCheckerUsesConfiguredIPsForHTTPS(t *testing.T) {
+	var sawHost string
+
+	var sawServerName string
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawHost = r.Host
+		if r.TLS != nil {
+			sawServerName = r.TLS.ServerName
+		}
+
+		switch r.URL.Path {
+		case "/v2/", "/v2/library/busybox/manifests/latest":
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	host, portValue, err := net.SplitHostPort(server.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("failed to split server address: %v", err)
+	}
+
+	port, err := strconv.Atoi(portValue)
+	if err != nil {
+		t.Fatalf("failed to parse server port: %v", err)
+	}
+
+	registry := monitoredRegistry{
+		endpoint:             "https://example.com:" + portValue,
+		target:               registryTarget{Scheme: "https", Host: "example.com", Port: port},
+		ips:                  []string{host},
+		repository:           "library/busybox",
+		reference:            "latest",
+		manifestAcceptHeader: defaultManifestMediaType,
+		headers:              map[string]string{},
+	}
+
+	checker := NewRegistryChecker(5 * time.Second)
+	checker.tlsConfig = server.Client().Transport.(*http.Transport).TLSClientConfig
+
+	health, ipHealths := checker.CheckIPs(context.Background(), registry, log.NewEntry(log.New()))
+
+	if !health.ResolveOk || health.IPCount != 1 || health.HealthyIPs != 1 ||
+		health.UnhealthyIPs != 0 {
+		t.Fatalf("unexpected registry health with configured HTTPS IPs: %#v", health)
+	}
+
+	if len(ipHealths) != 1 || ipHealths[0].IP != host || !ipHealths[0].DNSOk {
+		t.Fatalf("unexpected IP health with configured HTTPS IPs: %#v", ipHealths)
+	}
+
+	wantHost := "example.com:" + portValue
+	if sawHost != wantHost {
+		t.Fatalf("request Host = %q, want %q", sawHost, wantHost)
+	}
+
+	if sawServerName != "example.com" {
+		t.Fatalf("TLS ServerName = %q, want example.com", sawServerName)
+	}
+}
+
 func mustLocalRegistry(t *testing.T, server *httptest.Server) monitoredRegistry {
 	t.Helper()
 

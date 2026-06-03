@@ -112,7 +112,7 @@ config:
 
   logging:
     level: "info"
-    format: "json"
+    format: "text"
     debug: false
 
   performance:

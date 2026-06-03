@@ -87,7 +87,8 @@ type checkResult struct {
 
 // RegistryChecker performs Docker Registry HTTP API checks.
 type RegistryChecker struct {
-	timeout time.Duration
+	timeout   time.Duration
+	tlsConfig *tls.Config
 }
 
 // NewRegistryChecker creates a new registry checker.
@@ -250,7 +251,7 @@ func (rc *RegistryChecker) checkRegistryEndpoint(
 	requestURL string,
 	manifest bool,
 ) checkResult {
-	transport := newRegistryTransport(registry, ip, rc.timeout)
+	transport := newRegistryTransport(registry, ip, rc.timeout, rc.tlsConfig)
 	defer transport.CloseIdleConnections()
 
 	client := &http.Client{
@@ -329,54 +330,51 @@ func newRegistryTransport(
 	registry monitoredRegistry,
 	ip string,
 	timeout time.Duration,
+	tlsConfig *tls.Config,
 ) *http.Transport {
 	dialer := &net.Dialer{
 		Timeout: timeout,
 	}
-	tlsConfig := &tls.Config{
-		ServerName: registry.target.Host,
-		MinVersion: tls.VersionTLS12,
-	}
+	tlsConfig = registryTLSConfig(registry, tlsConfig)
 
 	return &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			dialHost, dialPort, err := net.SplitHostPort(addr)
+			targetAddr, err := registryDialAddress(registry, ip, addr)
 			if err != nil {
 				return nil, err
 			}
 
-			if sameRegistryHost(dialHost, registry.target.Host) {
-				return dialer.DialContext(ctx, network, net.JoinHostPort(ip, dialPort))
-			}
-
-			return dialer.DialContext(ctx, network, addr)
-		},
-		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			dialHost, dialPort, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, err
-			}
-
-			targetAddr := addr
-			if sameRegistryHost(dialHost, registry.target.Host) {
-				targetAddr = net.JoinHostPort(ip, dialPort)
-			}
-
-			conn, err := dialer.DialContext(ctx, network, targetAddr)
-			if err != nil {
-				return nil, err
-			}
-
-			tlsConn := tls.Client(conn, tlsConfig)
-			if err := tlsConn.HandshakeContext(ctx); err != nil {
-				_ = conn.Close()
-				return nil, err
-			}
-
-			return tlsConn, nil
+			return dialer.DialContext(ctx, network, targetAddr)
 		},
 		TLSClientConfig: tlsConfig,
 	}
+}
+
+func registryTLSConfig(registry monitoredRegistry, base *tls.Config) *tls.Config {
+	tlsConfig := &tls.Config{}
+	if base != nil {
+		tlsConfig = base.Clone()
+	}
+
+	tlsConfig.ServerName = registry.target.Host
+	if tlsConfig.MinVersion == 0 {
+		tlsConfig.MinVersion = tls.VersionTLS12
+	}
+
+	return tlsConfig
+}
+
+func registryDialAddress(registry monitoredRegistry, ip string, addr string) (string, error) {
+	dialHost, dialPort, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "", err
+	}
+
+	if sameRegistryHost(dialHost, registry.target.Host) {
+		return net.JoinHostPort(ip, dialPort), nil
+	}
+
+	return addr, nil
 }
 
 func resolveRegistryIPs(

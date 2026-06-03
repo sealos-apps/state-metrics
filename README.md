@@ -86,7 +86,7 @@ server:
 
 logging:
   level: "info"
-  format: "json"
+  format: "text"
 
 leaderElection:
   enabled: true
@@ -209,7 +209,7 @@ server:
 # Logging
 logging:
   level: "info"  # debug, info, warn, error
-  format: "json" # json, text
+  format: "text" # json, text
 
 # Leader election (required for cluster-level collectors)
 leaderElection:

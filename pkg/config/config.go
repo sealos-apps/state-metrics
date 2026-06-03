@@ -178,7 +178,7 @@ type LeaderElectionConfig struct {
 // LoggingConfig contains logging configuration
 type LoggingConfig struct {
 	Level  string `yaml:"level"  name:"level"  env:"LEVEL"  default:"info"  enum:"debug,info,warn,error" help:"Log level"`
-	Format string `yaml:"format" name:"format" env:"FORMAT" default:"json"  enum:"json,text"             help:"Log format"`
+	Format string `yaml:"format" name:"format" env:"FORMAT" default:"text"  enum:"json,text"             help:"Log format"`
 	Debug  bool   `yaml:"debug"  name:"debug"  env:"DEBUG"  default:"false"                              help:"Enable debug mode"`
 }
 
