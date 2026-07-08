@@ -1,0 +1,289 @@
+package billing
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"maps"
+	"strconv"
+	"sync"
+	"time"
+
+	"github.com/labring/sealos-state-metrics/pkg/collector/base"
+	"github.com/prometheus/client_golang/prometheus"
+	log "github.com/sirupsen/logrus"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+)
+
+// Collector reads finalized Sealos billing records from MongoDB.
+type Collector struct {
+	*base.BaseCollector
+
+	config      *Config
+	logger      *log.Entry
+	mongoClient *mongo.Client
+
+	mu       sync.RWMutex
+	snapshot *BillingSnapshot
+
+	resourceUsageGauge      *prometheus.Desc
+	ownerResourceUsageGauge *prometheus.Desc
+	lastSuccessGauge        *prometheus.Desc
+}
+
+func (c *Collector) initMetrics(namespace string) {
+	resourceLabels := []string{"window_start", "window_end", "resource", "unit"}
+	ownerResourceLabels := []string{
+		"window_start",
+		"window_end",
+		"owner",
+		"namespace",
+		"resource",
+		"unit",
+	}
+
+	c.resourceUsageGauge = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "billing", "resource_usage"),
+		"Aggregated billed resource usage from Sealos billing records over the previous complete hourly billing window in the raw Sealos billing unit.",
+		resourceLabels,
+		nil,
+	)
+	c.ownerResourceUsageGauge = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "billing_owner", "resource_usage"),
+		"Aggregated billed resource usage by Sealos owner and namespace over the previous complete hourly billing window.",
+		ownerResourceLabels,
+		nil,
+	)
+	c.lastSuccessGauge = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "billing", "last_success_timestamp_seconds"),
+		"Unix timestamp of the last successful Sealos billing collection.",
+		nil,
+		nil,
+	)
+
+	c.MustRegisterDesc(c.resourceUsageGauge)
+	c.MustRegisterDesc(c.ownerResourceUsageGauge)
+	c.MustRegisterDesc(c.lastSuccessGauge)
+}
+
+func (c *Collector) HasSynced() bool {
+	return true
+}
+
+func (c *Collector) Interval() time.Duration {
+	return c.config.ScrapeInterval
+}
+
+func (c *Collector) pollLoop(ctx context.Context) {
+	_ = c.Poll(ctx)
+	c.SetReady()
+
+	ticker := time.NewTicker(c.config.ScrapeInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if err := c.Poll(ctx); err != nil {
+				c.logger.WithError(err).Error("Failed to poll Sealos billing data")
+			}
+		case <-ctx.Done():
+			c.logger.Info("Context cancelled, stopping billing poll loop")
+			return
+		}
+	}
+}
+
+func (c *Collector) Poll(ctx context.Context) error {
+	if c.mongoClient == nil {
+		return errors.New("mongo client is nil")
+	}
+
+	queryCtx, cancel := context.WithTimeout(ctx, c.config.QueryTimeout)
+	defer cancel()
+
+	properties, err := c.loadProperties(queryCtx)
+	if err != nil {
+		return err
+	}
+
+	windowEnd := time.Now().UTC().Truncate(time.Hour)
+	windowStart := windowEnd.Add(-1 * time.Hour)
+	filter := bson.M{
+		"type": billingTypeConsumption,
+		"time": bson.M{
+			"$gt":  windowStart,
+			"$lte": windowEnd,
+		},
+	}
+
+	projection := bson.M{
+		"time":      1,
+		"owner":     1,
+		"namespace": 1,
+		"app_costs": 1,
+	}
+
+	cursor, err := c.mongoClient.
+		Database(c.config.Mongo.Database).
+		Collection(c.config.Mongo.BillingCollection).
+		Find(queryCtx, filter, optionsFindProjection(projection))
+	if err != nil {
+		return fmt.Errorf("query billing records: %w", err)
+	}
+	defer cursor.Close(queryCtx)
+
+	var docs []bson.M
+	if err := cursor.All(queryCtx, &docs); err != nil {
+		return fmt.Errorf("decode billing records: %w", err)
+	}
+
+	snapshot := aggregateBillingDocuments(docs, properties, windowStart, windowEnd)
+
+	c.mu.Lock()
+	c.snapshot = snapshot
+	c.mu.Unlock()
+
+	c.logger.WithFields(log.Fields{
+		"records":      len(docs),
+		"window_start": snapshot.WindowStart,
+		"window_end":   snapshot.WindowEnd,
+	}).Debug("Billing snapshot updated")
+
+	return nil
+}
+
+func (c *Collector) collect(ch chan<- prometheus.Metric) {
+	c.mu.RLock()
+	snapshot := c.snapshot
+	c.mu.RUnlock()
+
+	if snapshot == nil {
+		return
+	}
+
+	windowStart := strconv.FormatInt(snapshot.WindowStart.Unix(), 10)
+	windowEnd := strconv.FormatInt(snapshot.WindowEnd.Unix(), 10)
+
+	for key, total := range snapshot.Resources {
+		ch <- prometheus.MustNewConstMetric(
+			c.resourceUsageGauge,
+			prometheus.GaugeValue,
+			total.Used,
+			windowStart,
+			windowEnd,
+			key.Resource,
+			key.Unit,
+		)
+	}
+
+	for key, total := range snapshot.OwnerResources {
+		ch <- prometheus.MustNewConstMetric(
+			c.ownerResourceUsageGauge,
+			prometheus.GaugeValue,
+			total.Used,
+			windowStart,
+			windowEnd,
+			key.Owner,
+			key.Namespace,
+			key.Resource,
+			key.Unit,
+		)
+	}
+
+	ch <- prometheus.MustNewConstMetric(c.lastSuccessGauge, prometheus.GaugeValue, float64(snapshot.FinishedAt.Unix()))
+}
+
+func aggregateBillingDocuments(
+	docs []bson.M,
+	properties map[string]PropertyInfo,
+	windowStart, windowEnd time.Time,
+) *BillingSnapshot {
+	snapshot := &BillingSnapshot{
+		StartedAt:      time.Now().UTC(),
+		WindowStart:    windowStart,
+		WindowEnd:      windowEnd,
+		Resources:      make(map[resourceKey]resourceTotal),
+		OwnerResources: make(map[resourceKey]resourceTotal),
+	}
+
+	for _, doc := range docs {
+		owner := stringValue(doc["owner"])
+		namespace := stringValue(doc["namespace"])
+
+		for _, cost := range arrayValue(doc["app_costs"]) {
+			costMap, ok := cost.(bson.M)
+			if !ok {
+				continue
+			}
+
+			used := usedMap(costMap["used"])
+			for enum, value := range used {
+				property := propertyInfo(enum, properties)
+				key := resourceKey{
+					Resource: property.Name,
+					Unit:     property.Unit,
+				}
+				total := snapshot.Resources[key]
+				total.Used += float64(value)
+				snapshot.Resources[key] = total
+
+				ownerKey := key
+				ownerKey.Owner = owner
+				ownerKey.Namespace = namespace
+				ownerTotal := snapshot.OwnerResources[ownerKey]
+				ownerTotal.Used += float64(value)
+				snapshot.OwnerResources[ownerKey] = ownerTotal
+			}
+		}
+	}
+
+	snapshot.FinishedAt = time.Now().UTC()
+
+	return snapshot
+}
+
+func (c *Collector) loadProperties(ctx context.Context) (map[string]PropertyInfo, error) {
+	properties := make(map[string]PropertyInfo, len(defaultProperties))
+	maps.Copy(properties, defaultProperties)
+
+	cursor, err := c.mongoClient.
+		Database(c.config.Mongo.Database).
+		Collection(c.config.Mongo.PropertiesCollection).
+		Find(ctx, bson.M{}, optionsFindProjection(bson.M{"enum": 1, "name": 1, "unit": 1}))
+	if err != nil {
+		return nil, fmt.Errorf("query billing properties: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	for cursor.Next(ctx) {
+		var doc bson.M
+		if err := cursor.Decode(&doc); err != nil {
+			return nil, fmt.Errorf("decode billing property: %w", err)
+		}
+
+		enum := strconv.FormatInt(int64Value(doc["enum"]), 10)
+		if enum == "" {
+			continue
+		}
+
+		name := stringValue(doc["name"])
+		if name == "" {
+			continue
+		}
+
+		unit := stringValue(doc["unit"])
+		if unit == "" {
+			unit = "1"
+		}
+
+		properties[enum] = PropertyInfo{Name: name, Unit: unit}
+	}
+
+	if err := cursor.Err(); err != nil {
+		return nil, fmt.Errorf("iterate billing properties: %w", err)
+	}
+
+	return properties, nil
+}

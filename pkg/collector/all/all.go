@@ -3,6 +3,7 @@ package all
 
 import (
 	// Import all collectors to trigger their init() functions
+	_ "github.com/labring/sealos-state-metrics/pkg/collector/billing"
 	_ "github.com/labring/sealos-state-metrics/pkg/collector/cloudbalance"
 	_ "github.com/labring/sealos-state-metrics/pkg/collector/cockroachlicense"
 	_ "github.com/labring/sealos-state-metrics/pkg/collector/crds"

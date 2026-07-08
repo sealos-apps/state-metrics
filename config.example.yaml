@@ -70,7 +70,7 @@ performance:
   informerResyncPeriod: "10m"
 
 # List of enabled collectors
-# Available collectors: domain, registryproxy, node, pod, imagepull, zombie, cloudbalance, database, cockroachlicense
+# Available collectors: domain, registryproxy, node, pod, imagepull, zombie, cloudbalance, database, cockroachlicense, billing
 enabledCollectors:
   - domain
   # - registryproxy  # Disabled by default
@@ -112,6 +112,17 @@ collectors:
         owner: bob.wilson@example.com
         type: enterprise
         level: platinum
+
+  # Billing collector - reads finalized Sealos billing records from MongoDB.
+  # Reads the previous complete hourly billing window. CPU resource_usage is mCPU; divide by 1000 for cores.
+  billing:
+    scrapeInterval: "5m"
+    queryTimeout: "30s"
+    mongo:
+      uri: "mongodb://username:password@mongodb.account-system.svc:27017"
+      database: "sealos-resources"
+      billingCollection: "billing"
+      propertiesCollection: "properties"
 
   # Domain collector - monitors domain health
   domain:
