@@ -27,6 +27,7 @@ FROM alpine:latest
 
 # Install LVM tools and dependencies
 RUN apk add --no-cache \
+    curl \
     lvm2 \
     lvm2-extra \
     util-linux \
