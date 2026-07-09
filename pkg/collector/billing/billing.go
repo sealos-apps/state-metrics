@@ -101,26 +101,15 @@ func (c *Collector) Interval() time.Duration {
 }
 
 func (c *Collector) pollLoop(ctx context.Context) {
-	_ = c.Poll(ctx)
-	c.SetReady()
-
-	ticker := time.NewTicker(c.config.ScrapeInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			if err := c.Poll(ctx); err != nil {
-				c.logger.WithError(err).Error("Failed to poll Sealos billing data")
-			}
-		case <-ctx.Done():
-			c.logger.Info("Context cancelled, stopping billing poll loop")
-			return
-		}
-	}
+	c.RunPollLoop(ctx, c.Poll, base.PollLoopOptions{
+		Interval:  c.config.ScrapeInterval,
+		Operation: "billing",
+	})
 }
 
 func (c *Collector) Poll(ctx context.Context) error {
+	startedAt := time.Now()
+
 	if c.mongoClient == nil {
 		return errors.New("mongo client is nil")
 	}
@@ -166,7 +155,8 @@ func (c *Collector) Poll(ctx context.Context) error {
 		"resource_amount_groups": len(result.ResourceAmounts),
 		"window_start":           snapshot.WindowStart,
 		"window_end":             snapshot.WindowEnd,
-	}).Debug("Billing snapshot updated")
+		"duration":               time.Since(startedAt),
+	}).Info("Billing snapshot updated")
 
 	return nil
 }

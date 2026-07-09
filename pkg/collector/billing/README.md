@@ -50,7 +50,7 @@ The raw Sealos data has several important characteristics:
 | CPU unit | CPU usage uses `1m`; divide by `1000` to convert to CPU cores. |
 | Memory and storage unit | Memory and storage normally use `1Mi`. |
 | Network unit | Network normally uses `1Mi`; Sealos stores hourly sent traffic for billing. |
-| Price fields | `billing.amount` is the record total. `app_costs[].amount` is the app item total. `app_costs[].used_amount` is the resource-level amount map. The collector emits amount values without currency or unit labels. |
+| Price fields | `billing.amount` is the record total. `app_costs[].amount` is the app item total. `app_costs[].used_amount` is the resource-level amount map. Sealos stores raw amount values in 1/1000000 base units. The collector emits raw amount values without currency labels. |
 | Aggregation type | The `properties.price_type` controls how billing was generated: `AVG`, `SUM`, or `DIF`. The finalized `billing.app_costs[].used` already reflects that aggregation. |
 | Ownership | `owner` is the Sealos user owner. `namespace` is the charged namespace. |
 | App grouping | `app_type` identifies broad Sealos app categories; `app_costs[].type` and `app_costs[].name` identify entries inside the billing record. |
@@ -654,19 +654,19 @@ db.getSiblingDB("sealos-resources").billing.explain("executionStats").aggregate(
 Total billing amount for the previous complete hourly billing window:
 
 ```promql
-sum(sealos_billing_resource_amount)
+sum(sealos_billing_resource_amount) / 1000000
 ```
 
 Billing amount by resource:
 
 ```promql
-sum by (resource) (sealos_billing_resource_amount)
+sum by (resource) (sealos_billing_resource_amount) / 1000000
 ```
 
 Billing amount by owner and resource. Requires `enableOwnerMetrics=true`:
 
 ```promql
-sum by (owner, resource) (sealos_billing_owner_resource_amount)
+sum by (owner, resource) (sealos_billing_owner_resource_amount) / 1000000
 ```
 
 ## PromQL Examples

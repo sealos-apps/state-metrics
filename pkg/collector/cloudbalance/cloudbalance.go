@@ -49,24 +49,10 @@ func (c *Collector) Interval() time.Duration {
 
 // pollLoop periodically queries cloud balances
 func (c *Collector) pollLoop(ctx context.Context) {
-	// Initial poll
-	_ = c.Poll(ctx)
-	c.SetReady()
-
-	ticker := time.NewTicker(c.config.CheckInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			if err := c.Poll(ctx); err != nil {
-				c.logger.WithError(err).Error("Failed to poll cloud balances")
-			}
-		case <-ctx.Done():
-			c.logger.Info("Context cancelled, stopping cloud balance poll loop")
-			return
-		}
-	}
+	c.RunPollLoop(ctx, c.Poll, base.PollLoopOptions{
+		Interval:  c.config.CheckInterval,
+		Operation: "cloudbalance",
+	})
 }
 
 // Poll queries all configured cloud accounts

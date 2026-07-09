@@ -147,20 +147,10 @@ func (c *Collector) Poll(ctx context.Context) error {
 }
 
 func (c *Collector) pollLoop(ctx context.Context) {
-	ticker := time.NewTicker(c.runtime.checkInterval)
-	defer ticker.Stop()
-
-	_ = c.Poll(ctx)
-	c.SetReady()
-
-	for {
-		select {
-		case <-ticker.C:
-			_ = c.Poll(ctx)
-		case <-ctx.Done():
-			return
-		}
-	}
+	c.RunPollLoop(ctx, c.Poll, base.PollLoopOptions{
+		Interval:  c.runtime.checkInterval,
+		Operation: "registryproxy",
+	})
 }
 
 func (c *Collector) collect(ch chan<- prometheus.Metric) {

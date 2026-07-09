@@ -35,6 +35,17 @@ type BaseCollector struct {
 	lifecycle Lifecycle
 }
 
+// PollFunc executes one polling cycle.
+type PollFunc func(ctx context.Context) error
+
+// PollLoopOptions configures the common background poll loop.
+type PollLoopOptions struct {
+	Interval       time.Duration
+	Operation      string
+	SlowThreshold  time.Duration
+	SuccessInfoLog bool
+}
+
 // BaseCollectorOption is a functional option for configuring BaseCollector
 type BaseCollectorOption func(*BaseCollector)
 
@@ -313,6 +324,82 @@ func (b *BaseCollector) RegisterDesc(desc *prometheus.Desc) {
 	defer b.mu.Unlock()
 
 	b.descs = append(b.descs, desc)
+}
+
+// RunPollLoop executes an immediate poll, marks the collector ready, and then
+// polls on the configured interval with consistent duration logging.
+func (b *BaseCollector) RunPollLoop(
+	ctx context.Context,
+	poll PollFunc,
+	options PollLoopOptions,
+) {
+	operation := options.Operation
+	if operation == "" {
+		operation = "collector"
+	}
+
+	interval := options.Interval
+	if interval <= 0 {
+		interval = time.Minute
+	}
+
+	slowThreshold := options.SlowThreshold
+	if slowThreshold <= 0 {
+		slowThreshold = 500 * time.Millisecond
+	}
+
+	b.runPoll(ctx, poll, operation, slowThreshold, options.SuccessInfoLog, true)
+	b.SetReady()
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			b.runPoll(ctx, poll, operation, slowThreshold, options.SuccessInfoLog, false)
+		case <-ctx.Done():
+			b.logger.WithField("operation", operation).Info("Context cancelled, stopping poll loop")
+			return
+		}
+	}
+}
+
+func (b *BaseCollector) runPoll(
+	ctx context.Context,
+	poll PollFunc,
+	operation string,
+	slowThreshold time.Duration,
+	successInfoLog bool,
+	initial bool,
+) {
+	startedAt := time.Now()
+	err := poll(ctx)
+	duration := time.Since(startedAt)
+
+	fields := log.Fields{
+		"name":      b.name,
+		"operation": operation,
+		"duration":  duration,
+		"initial":   initial,
+	}
+
+	if err != nil {
+		b.logger.WithFields(fields).WithError(err).Error("Collector poll failed")
+		return
+	}
+
+	if duration > slowThreshold {
+		b.logger.WithFields(fields).Warn("Slow collector poll detected")
+		return
+	}
+
+	if successInfoLog {
+		b.logger.WithFields(fields).Info("Collector poll completed")
+		return
+	}
+
+	b.logger.WithFields(fields).Debug("Collector poll completed")
 }
 
 // Describe sends all descriptors to the channel

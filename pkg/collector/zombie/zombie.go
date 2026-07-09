@@ -102,23 +102,10 @@ func (c *Collector) Poll(ctx context.Context) error {
 
 // pollLoop runs the polling loop
 func (c *Collector) pollLoop(ctx context.Context) {
-	ticker := time.NewTicker(c.config.CheckInterval)
-	defer ticker.Stop()
-
-	// Do initial check
-	_ = c.Poll(ctx)
-
-	// Mark as ready after first poll completes
-	c.SetReady()
-
-	for {
-		select {
-		case <-ticker.C:
-			_ = c.Poll(ctx)
-		case <-ctx.Done():
-			return
-		}
-	}
+	c.RunPollLoop(ctx, c.Poll, base.PollLoopOptions{
+		Interval:  c.config.CheckInterval,
+		Operation: "zombie",
+	})
 }
 
 // collect collects metrics

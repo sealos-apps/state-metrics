@@ -109,23 +109,10 @@ func (c *Collector) Interval() time.Duration {
 }
 
 func (c *Collector) pollLoop(ctx context.Context) {
-	_ = c.Poll(ctx)
-	c.SetReady()
-
-	ticker := time.NewTicker(c.config.CheckInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			if err := c.Poll(ctx); err != nil {
-				c.logger.WithError(err).Error("Failed to poll Cockroach license information")
-			}
-		case <-ctx.Done():
-			c.logger.Info("Context cancelled, stopping Cockroach license poll loop")
-			return
-		}
-	}
+	c.RunPollLoop(ctx, c.Poll, base.PollLoopOptions{
+		Interval:  c.config.CheckInterval,
+		Operation: "cockroachlicense",
+	})
 }
 
 func (c *Collector) Poll(ctx context.Context) error {

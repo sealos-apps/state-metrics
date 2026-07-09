@@ -142,28 +142,13 @@ func (c *Collector) pollLoop(ctx context.Context) {
 			Info("Secret cache started successfully")
 	}
 
-	// Initial poll
-	_ = c.Poll(ctx)
-	c.SetReady()
+	c.RunPollLoop(ctx, c.Poll, base.PollLoopOptions{
+		Interval:  c.config.CheckInterval,
+		Operation: "database",
+	})
 
-	ticker := time.NewTicker(c.config.CheckInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			if err := c.Poll(ctx); err != nil {
-				c.logger.WithError(err).Error("Failed to poll database connectivity")
-			}
-		case <-ctx.Done():
-			c.logger.Info("Context cancelled, stopping database poll loop")
-
-			if c.secretCache != nil {
-				c.secretCache.Stop()
-			}
-
-			return
-		}
+	if c.secretCache != nil {
+		c.secretCache.Stop()
 	}
 }
 

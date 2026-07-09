@@ -5011,69 +5011,6 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "上一完整计费小时内出现计费用量的 owner 数量。需要 billing.enableOwnerMetrics=true；关闭时显示 0。",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 0,
-        "y": 78
-      },
-      "id": 1105,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "percentChangeColorMode": "standard",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "pluginVersion": "11.3.9",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "count(count by (owner) (sealos_billing_owner_resource_usage{owner=~\"$billing_owner\",namespace=~\"$billing_namespace\",resource=~\"$billing_resource\"})) or vector(0)",
-          "refId": "A"
-        }
-      ],
-      "title": "计费用户数",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
       "description": "上一完整计费小时的集群平均 NodePort 计费用量。Sealos 原始计量中 1 个 NodePort = 1000 unit。",
       "fieldConfig": {
         "defaults": {
@@ -5096,8 +5033,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 6,
+        "w": 8,
+        "x": 0,
         "y": 78
       },
       "id": 1115,
@@ -5137,7 +5074,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "上一完整计费小时的集群总费用数值。该值由 Sealos 资源级费用聚合得到，不带币种或单位。",
+      "description": "上一完整计费小时的集群总费用数值。Sealos 原始金额单位为 1/1000000，查询中除以 1000000；面板不带币种。",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -5159,8 +5096,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 12,
+        "w": 8,
+        "x": 8,
         "y": 78
       },
       "id": 1116,
@@ -5188,7 +5125,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(sealos_billing_resource_amount)",
+          "expr": "sum(sealos_billing_resource_amount) / 1000000",
           "refId": "A"
         }
       ],
@@ -5222,8 +5159,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 18,
+        "w": 8,
+        "x": 16,
         "y": 78
       },
       "id": 1106,
@@ -5758,7 +5695,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "上一完整计费小时的资源级费用趋势。该值来自 Sealos app_costs.used_amount，不带币种或单位。",
+      "description": "上一完整计费小时的资源级费用趋势。Sealos 原始金额单位为 1/1000000，查询中除以 1000000；面板不带币种。",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -5843,7 +5780,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (resource) (sealos_billing_resource_amount)",
+          "expr": "sum by (resource) (sealos_billing_resource_amount) / 1000000",
           "legendFormat": "{{resource}}",
           "range": true,
           "refId": "A"
@@ -6021,56 +5958,6 @@
         "options": [],
         "query": {
           "query": "label_values(sealos_registry_proxy_health, endpoint)",
-          "refId": "PrometheusVariableQueryEditor-VariableQuery"
-        },
-        "refresh": 2,
-        "regex": "",
-        "sort": 1,
-        "type": "query"
-      },
-      {
-        "allValue": ".*",
-        "current": {
-          "text": "All",
-          "value": "$__all"
-        },
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${DS_PROMETHEUS}"
-        },
-        "definition": "label_values(sealos_billing_owner_resource_usage, owner)",
-        "includeAll": true,
-        "label": "计费用户",
-        "multi": true,
-        "name": "billing_owner",
-        "options": [],
-        "query": {
-          "query": "label_values(sealos_billing_owner_resource_usage, owner)",
-          "refId": "PrometheusVariableQueryEditor-VariableQuery"
-        },
-        "refresh": 2,
-        "regex": "",
-        "sort": 1,
-        "type": "query"
-      },
-      {
-        "allValue": ".*",
-        "current": {
-          "text": "All",
-          "value": "$__all"
-        },
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${DS_PROMETHEUS}"
-        },
-        "definition": "label_values(sealos_billing_owner_resource_usage, namespace)",
-        "includeAll": true,
-        "label": "计费命名空间",
-        "multi": true,
-        "name": "billing_namespace",
-        "options": [],
-        "query": {
-          "query": "label_values(sealos_billing_owner_resource_usage, namespace)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
