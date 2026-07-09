@@ -205,7 +205,15 @@ func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
 		t.Fatalf("window end = %v, want %v", got, windowEnd)
 	}
 
+	if len(snapshot.Metrics) == 0 {
+		t.Fatal("snapshot metrics were not precomputed")
+	}
+
 	metrics := collectBillingMetrics(t, c)
+	if got, want := len(metrics), len(snapshot.Metrics); got != want {
+		t.Fatalf("collected metrics = %d, want precomputed metric count %d", got, want)
+	}
+
 	windowLabels := map[string]string{
 		"window_start": strconv.FormatInt(windowStart.Unix(), 10),
 		"window_end":   strconv.FormatInt(windowEnd.Unix(), 10),
@@ -219,7 +227,7 @@ func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
 			"resource": "cpu",
 			"unit":     "1m",
 		}),
-		1500,
+		1750,
 	)
 	assertGaugeValue(
 		t,
@@ -251,6 +259,16 @@ func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
 		}),
 		2,
 	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_resource_usage",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": "services.nodeports",
+			"unit":     "1",
+		}),
+		1000,
+	)
 
 	assertGaugeValue(
 		t,
@@ -262,7 +280,7 @@ func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
 			"resource":  "cpu",
 			"unit":      "1m",
 		}),
-		1000,
+		1250,
 	)
 	assertGaugeValue(
 		t,
@@ -291,6 +309,18 @@ func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
 	assertGaugeValue(
 		t,
 		metrics,
+		"test_billing_owner_resource_usage",
+		mergeLabels(windowLabels, map[string]string{
+			"owner":     "alice",
+			"namespace": "ns-alice",
+			"resource":  "services.nodeports",
+			"unit":      "1",
+		}),
+		1000,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
 		"test_billing_last_success_timestamp_seconds",
 		nil,
 		float64(snapshot.FinishedAt.Unix()),
@@ -301,6 +331,9 @@ func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
 	assertMetricAbsent(t, metrics, "test_billing_window_end_timestamp_seconds")
 	assertLabelAbsent(t, metrics, "app_type")
 	assertLabelAbsent(t, metrics, "status")
+	assertNoMetricWithLabels(t, metrics, map[string]string{"owner": "outside-start"})
+	assertNoMetricWithLabels(t, metrics, map[string]string{"owner": "outside-end"})
+	assertNoMetricWithLabels(t, metrics, map[string]string{"owner": "wrong-type"})
 }
 
 func startMongoContainer(t *testing.T, ctx context.Context) string {
@@ -353,6 +386,7 @@ func seedBillingMongo(
 		bson.M{"enum": 0, "name": "cpu", "unit": "1m"},
 		bson.M{"enum": 1, "name": "memory", "unit": "1Mi"},
 		bson.M{"enum": 3, "name": "network", "unit": "1Mi"},
+		bson.M{"enum": 4, "name": "services.nodeports", "unit": "1"},
 		bson.M{"enum": 7, "name": "custom.gpu", "unit": "1"},
 	})
 	if err != nil {
@@ -375,6 +409,16 @@ func seedBillingMongo(
 						resourceMemory: int64(2048),
 						"7":            int64(2),
 					},
+				},
+				bson.M{
+					"name": "launchpad-worker",
+					"used": bson.M{
+						resourceCPU:       int64(250),
+						resourceNodePorts: int64(1000),
+					},
+				},
+				bson.M{
+					"name": "empty-usage",
 				},
 			},
 		},
@@ -400,6 +444,15 @@ func seedBillingMongo(
 			"type":      billingTypeConsumption,
 			"owner":     "outside-start",
 			"namespace": "ns-outside-start",
+			"app_costs": []any{
+				bson.M{"used": bson.M{resourceCPU: int64(999)}},
+			},
+		},
+		bson.M{
+			"time":      windowEnd.Add(time.Second),
+			"type":      billingTypeConsumption,
+			"owner":     "outside-end",
+			"namespace": "ns-outside-end",
 			"app_costs": []any{
 				bson.M{"used": bson.M{resourceCPU: int64(999)}},
 			},
@@ -518,11 +571,31 @@ func assertLabelAbsent(t *testing.T, metrics []collectedMetric, labelName string
 	}
 }
 
+func assertNoMetricWithLabels(t *testing.T, metrics []collectedMetric, labels map[string]string) {
+	t.Helper()
+
+	for _, metric := range metrics {
+		if labelsContained(metric.labels, labels) {
+			t.Fatalf("unexpected metric %s with labels %v", metric.name, labels)
+		}
+	}
+}
+
 func labelsMatch(got, want map[string]string) bool {
 	if len(got) != len(want) {
 		return false
 	}
 
+	for key, value := range want {
+		if got[key] != value {
+			return false
+		}
+	}
+
+	return true
+}
+
+func labelsContained(got, want map[string]string) bool {
 	for key, value := range want {
 		if got[key] != value {
 			return false

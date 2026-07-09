@@ -1,6 +1,10 @@
 package billing
 
-import "time"
+import (
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 const (
 	resourceCPU       = "0"
@@ -50,6 +54,13 @@ type resourceTotal struct {
 	Used float64
 }
 
+type billingAggregateRow struct {
+	Owner     string `bson:"owner"`
+	Namespace string `bson:"namespace"`
+	Resource  string `bson:"resource"`
+	Used      any    `bson:"used"`
+}
+
 type BillingSnapshot struct {
 	StartedAt   time.Time
 	FinishedAt  time.Time
@@ -58,4 +69,5 @@ type BillingSnapshot struct {
 
 	Resources      map[resourceKey]resourceTotal
 	OwnerResources map[resourceKey]resourceTotal
+	Metrics        []prometheus.Metric
 }

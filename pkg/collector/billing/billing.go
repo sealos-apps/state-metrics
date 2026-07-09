@@ -14,6 +14,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // Collector reads finalized Sealos billing records from MongoDB.
@@ -110,48 +111,108 @@ func (c *Collector) Poll(ctx context.Context) error {
 
 	windowEnd := time.Now().UTC().Truncate(time.Hour)
 	windowStart := windowEnd.Add(-1 * time.Hour)
-	filter := bson.M{
-		"type": billingTypeConsumption,
-		"time": bson.M{
-			"$gt":  windowStart,
-			"$lte": windowEnd,
-		},
-	}
 
-	projection := bson.M{
-		"time":      1,
-		"owner":     1,
-		"namespace": 1,
-		"app_costs": 1,
-	}
-
-	cursor, err := c.mongoClient.
-		Database(c.config.Mongo.Database).
-		Collection(c.config.Mongo.BillingCollection).
-		Find(queryCtx, filter, optionsFindProjection(projection))
+	rows, err := c.queryBillingAggregateRows(queryCtx, windowStart, windowEnd)
 	if err != nil {
-		return fmt.Errorf("query billing records: %w", err)
-	}
-	defer cursor.Close(queryCtx)
-
-	var docs []bson.M
-	if err := cursor.All(queryCtx, &docs); err != nil {
-		return fmt.Errorf("decode billing records: %w", err)
+		return err
 	}
 
-	snapshot := aggregateBillingDocuments(docs, properties, windowStart, windowEnd)
+	snapshot := aggregateBillingRows(rows, properties, windowStart, windowEnd)
+	snapshot.Metrics = c.buildSnapshotMetrics(snapshot)
 
 	c.mu.Lock()
 	c.snapshot = snapshot
 	c.mu.Unlock()
 
 	c.logger.WithFields(log.Fields{
-		"records":      len(docs),
+		"groups":       len(rows),
 		"window_start": snapshot.WindowStart,
 		"window_end":   snapshot.WindowEnd,
 	}).Debug("Billing snapshot updated")
 
 	return nil
+}
+
+func (c *Collector) queryBillingAggregateRows(
+	ctx context.Context,
+	windowStart, windowEnd time.Time,
+) ([]billingAggregateRow, error) {
+	pipeline := mongo.Pipeline{
+		{{
+			Key: "$match",
+			Value: bson.D{
+				{Key: "type", Value: billingTypeConsumption},
+				{Key: "time", Value: bson.D{
+					{Key: "$gt", Value: windowStart},
+					{Key: "$lte", Value: windowEnd},
+				}},
+			},
+		}},
+		{{
+			Key: "$project",
+			Value: bson.D{
+				{Key: "owner", Value: 1},
+				{Key: "namespace", Value: 1},
+				{Key: "app_costs", Value: 1},
+			},
+		}},
+		{{Key: "$unwind", Value: "$app_costs"}},
+		{{
+			Key: "$project",
+			Value: bson.D{
+				{Key: "owner", Value: 1},
+				{Key: "namespace", Value: 1},
+				{Key: "used", Value: bson.D{{
+					Key: "$objectToArray",
+					Value: bson.D{{
+						Key: "$ifNull",
+						Value: bson.A{
+							"$app_costs.used",
+							bson.D{},
+						},
+					}},
+				}}},
+			},
+		}},
+		{{Key: "$unwind", Value: "$used"}},
+		{{
+			Key: "$group",
+			Value: bson.D{
+				{Key: "_id", Value: bson.D{
+					{Key: "owner", Value: "$owner"},
+					{Key: "namespace", Value: "$namespace"},
+					{Key: "resource", Value: "$used.k"},
+				}},
+				{Key: "used", Value: bson.D{{Key: "$sum", Value: "$used.v"}}},
+			},
+		}},
+		{{
+			Key: "$project",
+			Value: bson.D{
+				{Key: "_id", Value: 0},
+				{Key: "owner", Value: "$_id.owner"},
+				{Key: "namespace", Value: "$_id.namespace"},
+				{Key: "resource", Value: "$_id.resource"},
+				{Key: "used", Value: 1},
+			},
+		}},
+	}
+
+	cursor, err := c.mongoClient.
+		Database(c.config.Mongo.Database).
+		Collection(c.config.Mongo.BillingCollection).
+		Aggregate(ctx, pipeline, options.Aggregate().SetAllowDiskUse(true))
+	if err != nil {
+		return nil, fmt.Errorf("aggregate billing records: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var rows []billingAggregateRow
+	if err := cursor.All(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("decode billing aggregate rows: %w", err)
+	}
+
+	return rows, nil
 }
 
 func (c *Collector) collect(ch chan<- prometheus.Metric) {
@@ -163,11 +224,39 @@ func (c *Collector) collect(ch chan<- prometheus.Metric) {
 		return
 	}
 
+	if len(snapshot.Metrics) > 0 {
+		for _, metric := range snapshot.Metrics {
+			ch <- metric
+		}
+
+		return
+	}
+
+	c.emitSnapshotMetrics(func(metric prometheus.Metric) {
+		ch <- metric
+	}, snapshot)
+}
+
+func (c *Collector) buildSnapshotMetrics(snapshot *BillingSnapshot) []prometheus.Metric {
+	metrics := make(
+		[]prometheus.Metric,
+		0,
+		len(snapshot.Resources)+len(snapshot.OwnerResources)+1,
+	)
+
+	c.emitSnapshotMetrics(func(metric prometheus.Metric) {
+		metrics = append(metrics, metric)
+	}, snapshot)
+
+	return metrics
+}
+
+func (c *Collector) emitSnapshotMetrics(emit func(prometheus.Metric), snapshot *BillingSnapshot) {
 	windowStart := strconv.FormatInt(snapshot.WindowStart.Unix(), 10)
 	windowEnd := strconv.FormatInt(snapshot.WindowEnd.Unix(), 10)
 
 	for key, total := range snapshot.Resources {
-		ch <- prometheus.MustNewConstMetric(
+		emit(prometheus.MustNewConstMetric(
 			c.resourceUsageGauge,
 			prometheus.GaugeValue,
 			total.Used,
@@ -175,11 +264,11 @@ func (c *Collector) collect(ch chan<- prometheus.Metric) {
 			windowEnd,
 			key.Resource,
 			key.Unit,
-		)
+		))
 	}
 
 	for key, total := range snapshot.OwnerResources {
-		ch <- prometheus.MustNewConstMetric(
+		emit(prometheus.MustNewConstMetric(
 			c.ownerResourceUsageGauge,
 			prometheus.GaugeValue,
 			total.Used,
@@ -189,10 +278,46 @@ func (c *Collector) collect(ch chan<- prometheus.Metric) {
 			key.Namespace,
 			key.Resource,
 			key.Unit,
-		)
+		))
 	}
 
-	ch <- prometheus.MustNewConstMetric(c.lastSuccessGauge, prometheus.GaugeValue, float64(snapshot.FinishedAt.Unix()))
+	emit(prometheus.MustNewConstMetric(
+		c.lastSuccessGauge,
+		prometheus.GaugeValue,
+		float64(snapshot.FinishedAt.Unix()),
+	))
+}
+
+func aggregateBillingRows(
+	rows []billingAggregateRow,
+	properties map[string]PropertyInfo,
+	windowStart, windowEnd time.Time,
+) *BillingSnapshot {
+	snapshot := newBillingSnapshot(windowStart, windowEnd)
+
+	for _, row := range rows {
+		property := propertyInfo(row.Resource, properties)
+		key := resourceKey{
+			Resource: property.Name,
+			Unit:     property.Unit,
+		}
+		used := float64(int64Value(row.Used))
+
+		total := snapshot.Resources[key]
+		total.Used += used
+		snapshot.Resources[key] = total
+
+		ownerKey := key
+		ownerKey.Owner = row.Owner
+		ownerKey.Namespace = row.Namespace
+		ownerTotal := snapshot.OwnerResources[ownerKey]
+		ownerTotal.Used += used
+		snapshot.OwnerResources[ownerKey] = ownerTotal
+	}
+
+	snapshot.FinishedAt = time.Now().UTC()
+
+	return snapshot
 }
 
 func aggregateBillingDocuments(
@@ -200,13 +325,7 @@ func aggregateBillingDocuments(
 	properties map[string]PropertyInfo,
 	windowStart, windowEnd time.Time,
 ) *BillingSnapshot {
-	snapshot := &BillingSnapshot{
-		StartedAt:      time.Now().UTC(),
-		WindowStart:    windowStart,
-		WindowEnd:      windowEnd,
-		Resources:      make(map[resourceKey]resourceTotal),
-		OwnerResources: make(map[resourceKey]resourceTotal),
-	}
+	snapshot := newBillingSnapshot(windowStart, windowEnd)
 
 	for _, doc := range docs {
 		owner := stringValue(doc["owner"])
@@ -242,6 +361,16 @@ func aggregateBillingDocuments(
 	snapshot.FinishedAt = time.Now().UTC()
 
 	return snapshot
+}
+
+func newBillingSnapshot(windowStart, windowEnd time.Time) *BillingSnapshot {
+	return &BillingSnapshot{
+		StartedAt:      time.Now().UTC(),
+		WindowStart:    windowStart,
+		WindowEnd:      windowEnd,
+		Resources:      make(map[resourceKey]resourceTotal),
+		OwnerResources: make(map[resourceKey]resourceTotal),
+	}
 }
 
 func (c *Collector) loadProperties(ctx context.Context) (map[string]PropertyInfo, error) {

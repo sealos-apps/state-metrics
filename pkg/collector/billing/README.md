@@ -415,6 +415,109 @@ COLLECTORS_BILLING_SCRAPE_INTERVAL='5m'
 COLLECTORS_BILLING_QUERY_TIMEOUT='30s'
 ```
 
+## Mongo Query Behavior
+
+Each scrape reads the previous complete UTC hour:
+
+```text
+windowEnd   = now.UTC().Truncate(time.Hour)
+windowStart = windowEnd - 1h
+```
+
+The collector queries `billing` with this match condition:
+
+```javascript
+{
+  type: 0,
+  time: {
+    $gt: ISODate("<windowStart>"),
+    $lte: ISODate("<windowEnd>")
+  }
+}
+```
+
+Aggregation is executed inside MongoDB:
+
+1. Match the previous complete billing hour.
+2. Project `owner`, `namespace`, and `app_costs`.
+3. Unwind `app_costs`.
+4. Convert `app_costs.used` from an object such as `{ "0": 500, "1": 1024 }`
+   into key/value rows.
+5. Group by `owner`, `namespace`, and resource enum.
+6. Sum `used` per group.
+
+The collector receives rows shaped like this:
+
+```json
+{
+  "owner": "user-a",
+  "namespace": "ns-user-a",
+  "resource": "0",
+  "used": 2500
+}
+```
+
+The resource enum is then mapped through `properties` and emitted as
+Prometheus labels.
+
+### Recommended Index
+
+For large billing collections, create an index matching the collector's hourly
+query:
+
+```javascript
+db.getSiblingDB("sealos-resources").billing.createIndex(
+  { type: 1, time: 1 },
+  { name: "sealos_state_metrics_type_time" }
+)
+```
+
+The Sealos account controller creates an owner-oriented billing index:
+
+```javascript
+{ owner: 1, time: 1, type: 1 }
+```
+
+That index is useful for owner-scoped account queries. The collector scans by
+`type` and `time`, so `{ type: 1, time: 1 }` gives MongoDB a direct range scan
+for the scrape window.
+
+Check the query plan with:
+
+```javascript
+db.getSiblingDB("sealos-resources").billing.explain("executionStats").aggregate([
+  {
+    $match: {
+      type: 0,
+      time: {
+        $gt: ISODate("2026-07-09T01:00:00Z"),
+        $lte: ISODate("2026-07-09T02:00:00Z")
+      }
+    }
+  },
+  { $project: { owner: 1, namespace: 1, app_costs: 1 } },
+  { $unwind: "$app_costs" },
+  {
+    $project: {
+      owner: 1,
+      namespace: 1,
+      used: { $objectToArray: { $ifNull: ["$app_costs.used", {}] } }
+    }
+  },
+  { $unwind: "$used" },
+  {
+    $group: {
+      _id: {
+        owner: "$owner",
+        namespace: "$namespace",
+        resource: "$used.k"
+      },
+      used: { $sum: "$used.v" }
+    }
+  }
+])
+```
+
 ## PromQL Examples
 
 Total average billed CPU cores for the previous complete hourly billing window:
