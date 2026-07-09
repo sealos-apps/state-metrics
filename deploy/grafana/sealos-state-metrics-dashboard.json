@@ -5188,7 +5188,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "time() - sealos_billing_last_success_timestamp_seconds",
+          "expr": "time() - max(sealos_billing_last_success_timestamp_seconds)",
           "refId": "A"
         }
       ],
