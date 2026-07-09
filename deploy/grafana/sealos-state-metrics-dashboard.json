@@ -4781,7 +4781,7 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
+        "w": 6,
         "x": 0,
         "y": 74
       },
@@ -4844,8 +4844,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 4,
+        "w": 6,
+        "x": 6,
         "y": 74
       },
       "id": 1102,
@@ -4907,8 +4907,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 8,
+        "w": 6,
+        "x": 12,
         "y": 74
       },
       "id": 1103,
@@ -4970,8 +4970,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 12,
+        "w": 6,
+        "x": 18,
         "y": 74
       },
       "id": 1104,
@@ -5011,7 +5011,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "当前筛选条件下有计费用量的 owner 数量。",
+      "description": "上一完整计费小时内出现计费用量的 owner 数量。",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -5033,9 +5033,9 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 16,
-        "y": 74
+        "w": 8,
+        "x": 0,
+        "y": 78
       },
       "id": 1105,
       "options": {
@@ -5074,6 +5074,69 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "上一完整计费小时的集群平均 NodePort 计费用量。Sealos 原始计量中 1 个 NodePort = 1000 unit。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 78
+      },
+      "id": 1115,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.3.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(sealos_billing_resource_usage{resource=\"services.nodeports\",unit=\"1\"}) / 1000",
+          "refId": "A"
+        }
+      ],
+      "title": "平均 NodePort",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "description": "当前时间距离最近一次 billing collector 成功采集的秒数。",
       "fieldConfig": {
         "defaults": {
@@ -5096,9 +5159,9 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
-        "x": 20,
-        "y": 74
+        "w": 8,
+        "x": 16,
+        "y": 78
       },
       "id": 1106,
       "options": {
@@ -5193,9 +5256,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 8,
         "x": 0,
-        "y": 78
+        "y": 82
       },
       "id": 1107,
       "options": {
@@ -5292,9 +5355,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 78
+        "w": 8,
+        "x": 8,
+        "y": 82
       },
       "id": 1108,
       "options": {
@@ -5391,9 +5454,9 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 86
+        "w": 8,
+        "x": 16,
+        "y": 82
       },
       "id": 1112,
       "options": {
@@ -5491,8 +5554,8 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 86
+        "x": 0,
+        "y": 90
       },
       "id": 1113,
       "options": {
@@ -5526,6 +5589,105 @@
         }
       ],
       "title": "网络流量趋势 (GiB/h)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "上一完整计费小时的集群平均 NodePort 计费用量趋势。Sealos 原始计量中 1 个 NodePort = 1000 unit。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "barWidthFactor": 0.6
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 90
+      },
+      "id": 1114,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "11.3.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(sealos_billing_resource_usage{resource=\"services.nodeports\",unit=\"1\"}) / 1000",
+          "legendFormat": "NodePort",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "NodePort 趋势",
       "type": "timeseries"
     }
   ],
