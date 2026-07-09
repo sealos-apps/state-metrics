@@ -4788,8 +4788,8 @@
       "id": 1101,
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
+        "graphMode": "none",
+        "justifyMode": "center",
         "orientation": "auto",
         "percentChangeColorMode": "standard",
         "reduceOptions": {
@@ -4851,8 +4851,8 @@
       "id": 1102,
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
+        "graphMode": "none",
+        "justifyMode": "center",
         "orientation": "auto",
         "percentChangeColorMode": "standard",
         "reduceOptions": {
@@ -4914,8 +4914,8 @@
       "id": 1103,
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
+        "graphMode": "none",
+        "justifyMode": "center",
         "orientation": "auto",
         "percentChangeColorMode": "standard",
         "reduceOptions": {
@@ -4977,8 +4977,8 @@
       "id": 1104,
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
+        "graphMode": "none",
+        "justifyMode": "center",
         "orientation": "auto",
         "percentChangeColorMode": "standard",
         "reduceOptions": {
@@ -5040,8 +5040,8 @@
       "id": 1105,
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
+        "graphMode": "none",
+        "justifyMode": "center",
         "orientation": "auto",
         "percentChangeColorMode": "standard",
         "reduceOptions": {
@@ -5103,8 +5103,8 @@
       "id": 1106,
       "options": {
         "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
+        "graphMode": "none",
+        "justifyMode": "center",
         "orientation": "auto",
         "percentChangeColorMode": "standard",
         "reduceOptions": {
@@ -5137,11 +5137,12 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "集群上一小时平均 CPU 核心数趋势。",
+      "description": "上一完整计费小时的集群平均 CPU 核心数趋势。",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "green"
           },
           "custom": {
             "axisBorderShow": false,
@@ -5151,7 +5152,7 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 10,
+            "fillOpacity": 0,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
@@ -5166,14 +5167,15 @@
               "type": "linear"
             },
             "showPoints": "never",
-            "spanNulls": false,
+            "spanNulls": true,
             "stacking": {
               "group": "A",
               "mode": "none"
             },
             "thresholdsStyle": {
               "mode": "off"
-            }
+            },
+            "barWidthFactor": 0.6
           },
           "mappings": [],
           "thresholds": {
@@ -5185,7 +5187,7 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "cores"
         },
         "overrides": []
       },
@@ -5207,8 +5209,9 @@
           "showLegend": true
         },
         "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
         }
       },
       "pluginVersion": "11.3.9",
@@ -5218,8 +5221,10 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
+          "editorMode": "code",
           "expr": "sum(sealos_billing_resource_usage{resource=\"cpu\",unit=\"1m\"}) / 1000",
-          "legendFormat": "集群总计",
+          "legendFormat": "CPU cores",
+          "range": true,
           "refId": "A"
         }
       ],
@@ -5231,11 +5236,12 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "上一完整计费小时的内存、存储和网络计费用量趋势。",
+      "description": "上一完整计费小时的集群平均内存 GiB 趋势。",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "green"
           },
           "custom": {
             "axisBorderShow": false,
@@ -5245,7 +5251,7 @@
             "axisPlacement": "auto",
             "barAlignment": 0,
             "drawStyle": "line",
-            "fillOpacity": 10,
+            "fillOpacity": 0,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
@@ -5260,14 +5266,15 @@
               "type": "linear"
             },
             "showPoints": "never",
-            "spanNulls": false,
+            "spanNulls": true,
             "stacking": {
               "group": "A",
               "mode": "none"
             },
             "thresholdsStyle": {
               "mode": "off"
-            }
+            },
+            "barWidthFactor": 0.6
           },
           "mappings": [],
           "thresholds": {
@@ -5301,8 +5308,9 @@
           "showLegend": true
         },
         "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
         }
       },
       "pluginVersion": "11.3.9",
@@ -5312,30 +5320,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
+          "editorMode": "code",
           "expr": "sum(sealos_billing_resource_usage{resource=\"memory\",unit=\"1Mi\"}) / 1024",
-          "refId": "A",
-          "legendFormat": "内存 GiB"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(sealos_billing_resource_usage{resource=\"storage\",unit=\"1Mi\"}) / 1024",
-          "refId": "B",
-          "legendFormat": "存储 GiB"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(sealos_billing_resource_usage{resource=\"network\",unit=\"1Mi\"}) / 1024",
-          "refId": "C",
-          "legendFormat": "网络 GiB/h"
+          "legendFormat": "内存 GiB",
+          "range": true,
+          "refId": "A"
         }
       ],
-      "title": "内存/存储/网络趋势 (GiB)",
+      "title": "内存趋势 (GiB)",
       "type": "timeseries"
     },
     {
@@ -5343,18 +5335,45 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "当前上一完整计费小时内，按 owner、namespace、resource、unit 展示原始计费用量。window_start/window_end 为 Unix 秒。",
+      "description": "上一完整计费小时的集群平均存储 GiB 趋势。",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "thresholds"
+            "mode": "fixed",
+            "fixedColor": "yellow"
           },
           "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
             },
-            "inspect": false
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "barWidthFactor": 0.6
           },
           "mappings": [],
           "thresholds": {
@@ -5365,49 +5384,33 @@
                 "value": null
               }
             ]
-          }
+          },
+          "unit": "gbytes"
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "用量"
-            },
-            "properties": [
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-background"
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "gridPos": {
-        "h": 10,
-        "w": 24,
+        "h": 8,
+        "w": 12,
         "x": 0,
         "y": 86
       },
-      "id": 1111,
+      "id": 1112,
       "options": {
-        "cellHeight": "sm",
-        "footer": {
-          "countRows": false,
-          "fields": "",
-          "reducer": [
-            "sum"
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
           ],
-          "show": false
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
         },
-        "showHeader": true,
-        "sortBy": [
-          {
-            "desc": true,
-            "displayName": "用量"
-          }
-        ]
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
       },
       "pluginVersion": "11.3.9",
       "targets": [
@@ -5416,45 +5419,114 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sealos_billing_owner_resource_usage{owner=~\"$billing_owner\",namespace=~\"$billing_namespace\",resource=~\"$billing_resource\"}",
-          "refId": "A",
-          "instant": true,
-          "format": "table"
+          "editorMode": "code",
+          "expr": "sum(sealos_billing_resource_usage{resource=\"storage\",unit=\"1Mi\"}) / 1024",
+          "legendFormat": "存储 GiB",
+          "range": true,
+          "refId": "A"
         }
       ],
-      "title": "计费明细 - 当前小时窗口",
-      "transformations": [
+      "title": "存储趋势 (GiB)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "上一完整计费小时的网络流量 GiB/h 趋势。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "barWidthFactor": 0.6
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "gbytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 86
+      },
+      "id": 1113,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "11.3.9",
+      "targets": [
         {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "__name__": true,
-              "instance": true,
-              "job": true
-            },
-            "indexByName": {
-              "owner": 0,
-              "namespace": 1,
-              "resource": 2,
-              "unit": 3,
-              "window_start": 4,
-              "window_end": 5,
-              "Value #A": 6
-            },
-            "renameByName": {
-              "owner": "用户",
-              "namespace": "命名空间",
-              "resource": "资源",
-              "unit": "单位",
-              "window_start": "窗口开始",
-              "window_end": "窗口结束",
-              "Value #A": "用量"
-            }
-          }
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(sealos_billing_resource_usage{resource=\"network\",unit=\"1Mi\"}) / 1024",
+          "legendFormat": "网络 GiB/h",
+          "range": true,
+          "refId": "A"
         }
       ],
-      "type": "table"
+      "title": "网络流量趋势 (GiB/h)",
+      "type": "timeseries"
     }
   ],
   "preload": false,
