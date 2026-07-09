@@ -32,6 +32,7 @@ func TestConfigLoadsDocumentedMongoEnvironmentVariables(t *testing.T) {
 		"COLLECTORS_BILLING_MONGO_PROPERTIES_COLLECTION": "billing-properties",
 		"COLLECTORS_BILLING_SCRAPE_INTERVAL":             "2m",
 		"COLLECTORS_BILLING_QUERY_TIMEOUT":               "15s",
+		"COLLECTORS_BILLING_ENABLE_OWNER_METRICS":        "true",
 	}))
 
 	if err := loader.LoadModuleConfig("collectors.billing", cfg); err != nil {
@@ -61,6 +62,10 @@ func TestConfigLoadsDocumentedMongoEnvironmentVariables(t *testing.T) {
 	if cfg.QueryTimeout != 15*time.Second {
 		t.Fatalf("query timeout = %s", cfg.QueryTimeout)
 	}
+
+	if !cfg.EnableOwnerMetrics {
+		t.Fatal("enable owner metrics = false, want true")
+	}
 }
 
 func TestAggregateBillingDocuments(t *testing.T) {
@@ -76,6 +81,10 @@ func TestAggregateBillingDocuments(t *testing.T) {
 						resourceCPU:    int64(1000),
 						resourceMemory: int64(2048),
 					},
+					"used_amount": bson.M{
+						resourceCPU:    int64(10),
+						resourceMemory: int64(20),
+					},
 				},
 			},
 		},
@@ -86,7 +95,8 @@ func TestAggregateBillingDocuments(t *testing.T) {
 			"status":    billingStatusSettled,
 			"app_costs": []any{
 				bson.M{
-					"used": bson.M{resourceCPU: int64(300)},
+					"used":        bson.M{resourceCPU: int64(300)},
+					"used_amount": bson.M{resourceCPU: int64(30)},
 				},
 			},
 		},
@@ -97,7 +107,8 @@ func TestAggregateBillingDocuments(t *testing.T) {
 			"status":    billingStatusSubscription,
 			"app_costs": []any{
 				bson.M{
-					"used": bson.M{resourceNetwork: int64(4096)},
+					"used":        bson.M{resourceNetwork: int64(4096)},
+					"used_amount": bson.M{resourceNetwork: int64(40)},
 				},
 			},
 		},
@@ -140,6 +151,61 @@ func TestAggregateBillingDocuments(t *testing.T) {
 	if got := snapshot.Resources[networkKey].Used; got != 4096 {
 		t.Fatalf("network used = %v, want 4096", got)
 	}
+
+	cpuAmountKey := resourceAmountKey{Resource: defaultProperties[resourceCPU].Name}
+	if got := snapshot.ResourceAmounts[cpuAmountKey].Amount; got != 40 {
+		t.Fatalf("cpu resource amount = %v, want 40", got)
+	}
+
+	ownerCPUAmountKey := resourceAmountKey{
+		Resource:  cpuAmountKey.Resource,
+		Owner:     "alice",
+		Namespace: "ns-alice",
+	}
+	if got := snapshot.OwnerResourceAmounts[ownerCPUAmountKey].Amount; got != 40 {
+		t.Fatalf("owner cpu resource amount = %v, want 40", got)
+	}
+}
+
+func TestBillingAggregatePipelinesDoNotUseFacet(t *testing.T) {
+	windowStart := time.Date(2026, time.July, 8, 0, 0, 0, 0, time.UTC)
+	windowEnd := windowStart.Add(time.Hour)
+	pipelines := map[string]mongo.Pipeline{
+		"resource usage with owner metrics": billingAggregatePipeline(
+			windowStart,
+			windowEnd,
+			billingResourceUsageStages(true),
+		),
+		"resource amount with owner metrics": billingAggregatePipeline(
+			windowStart,
+			windowEnd,
+			billingResourceAmountStages(true),
+		),
+		"resource usage cluster metrics": billingAggregatePipeline(
+			windowStart,
+			windowEnd,
+			billingResourceUsageStages(false),
+		),
+		"resource amount cluster metrics": billingAggregatePipeline(
+			windowStart,
+			windowEnd,
+			billingResourceAmountStages(false),
+		),
+	}
+
+	for name, pipeline := range pipelines {
+		if pipelineHasStage(pipeline, "$facet") {
+			t.Fatalf("%s pipeline contains $facet", name)
+		}
+
+		if !pipelineHasStage(pipeline, "$match") {
+			t.Fatalf("%s pipeline is missing $match", name)
+		}
+
+		if !pipelineHasStage(pipeline, "$group") {
+			t.Fatalf("%s pipeline is missing $group", name)
+		}
+	}
 }
 
 func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
@@ -168,6 +234,7 @@ func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
 	cfg.Mongo.URI = mongoURI
 	cfg.Mongo.Database = "billing-test"
 	cfg.QueryTimeout = 10 * time.Second
+	cfg.EnableOwnerMetrics = true
 
 	windowEnd := time.Now().UTC().Truncate(time.Hour)
 	windowStart := windowEnd.Add(-1 * time.Hour)
@@ -321,12 +388,81 @@ func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
 	assertGaugeValue(
 		t,
 		metrics,
+		"test_billing_resource_amount",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": "cpu",
+		}),
+		50,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_resource_amount",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": "memory",
+		}),
+		20,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_resource_amount",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": "network",
+		}),
+		35,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_resource_amount",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": "custom.gpu",
+		}),
+		5,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_resource_amount",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": "services.nodeports",
+		}),
+		40,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_owner_resource_amount",
+		mergeLabels(windowLabels, map[string]string{
+			"owner":     "alice",
+			"namespace": "ns-alice",
+			"resource":  "cpu",
+		}),
+		35,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_owner_resource_amount",
+		mergeLabels(windowLabels, map[string]string{
+			"owner":     "bob",
+			"namespace": "ns-bob",
+			"resource":  "network",
+		}),
+		35,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
 		"test_billing_last_success_timestamp_seconds",
 		nil,
 		float64(snapshot.FinishedAt.Unix()),
 	)
 
 	assertMetricAbsent(t, metrics, "test_billing_record_count")
+	assertMetricAbsent(t, metrics, "test_billing_amount")
+	assertMetricAbsent(t, metrics, "test_billing_owner_amount")
 	assertMetricAbsent(t, metrics, "test_billing_window_start_timestamp_seconds")
 	assertMetricAbsent(t, metrics, "test_billing_window_end_timestamp_seconds")
 	assertLabelAbsent(t, metrics, "app_type")
@@ -334,6 +470,98 @@ func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
 	assertNoMetricWithLabels(t, metrics, map[string]string{"owner": "outside-start"})
 	assertNoMetricWithLabels(t, metrics, map[string]string{"owner": "outside-end"})
 	assertNoMetricWithLabels(t, metrics, map[string]string{"owner": "wrong-type"})
+}
+
+func TestPollSkipsOwnerMetricsWhenDisabled(t *testing.T) {
+	testcontainers.SkipIfProviderIsNotHealthy(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	mongoURI := startMongoContainer(t, ctx)
+
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
+	if err != nil {
+		t.Fatalf("connect mongo: %v", err)
+	}
+	defer func() {
+		if err := client.Disconnect(context.Background()); err != nil {
+			t.Fatalf("disconnect mongo: %v", err)
+		}
+	}()
+
+	cfg := NewDefaultConfig()
+	cfg.Mongo.URI = mongoURI
+	cfg.Mongo.Database = "billing-disabled-test"
+	cfg.QueryTimeout = 10 * time.Second
+
+	windowEnd := time.Now().UTC().Truncate(time.Hour)
+	windowStart := windowEnd.Add(-1 * time.Hour)
+
+	seedBillingMongo(t, ctx, client, cfg, windowStart, windowEnd)
+
+	logger := log.New()
+	logger.SetOutput(io.Discard)
+
+	c := &Collector{
+		BaseCollector: base.NewBaseCollector("billing", log.NewEntry(logger)),
+		config:        cfg,
+		logger:        log.NewEntry(logger),
+		mongoClient:   client,
+	}
+	c.initMetrics("test")
+
+	if err := c.Poll(ctx); err != nil {
+		t.Fatalf("poll billing: %v", err)
+	}
+
+	c.mu.RLock()
+	snapshot := c.snapshot
+	c.mu.RUnlock()
+
+	if snapshot == nil {
+		t.Fatal("snapshot is nil")
+	}
+
+	if len(snapshot.OwnerResources) != 0 {
+		t.Fatalf("owner resources = %d, want 0", len(snapshot.OwnerResources))
+	}
+
+	if len(snapshot.OwnerResourceAmounts) != 0 {
+		t.Fatalf("owner resource amounts = %d, want 0", len(snapshot.OwnerResourceAmounts))
+	}
+
+	metrics := collectBillingMetrics(t, c)
+	windowLabels := map[string]string{
+		"window_start": strconv.FormatInt(windowStart.Unix(), 10),
+		"window_end":   strconv.FormatInt(windowEnd.Unix(), 10),
+	}
+
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_resource_usage",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": "cpu",
+			"unit":     "1m",
+		}),
+		1750,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_resource_amount",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": "cpu",
+		}),
+		50,
+	)
+	assertMetricAbsent(t, metrics, "test_billing_owner_resource_usage")
+	assertMetricAbsent(t, metrics, "test_billing_amount")
+	assertMetricAbsent(t, metrics, "test_billing_owner_amount")
+	assertMetricAbsent(t, metrics, "test_billing_owner_resource_amount")
+	assertLabelAbsent(t, metrics, "owner")
+	assertLabelAbsent(t, metrics, "namespace")
 }
 
 func startMongoContainer(t *testing.T, ctx context.Context) string {
@@ -399,6 +627,7 @@ func seedBillingMongo(
 			"type":      billingTypeConsumption,
 			"owner":     "alice",
 			"namespace": "ns-alice",
+			"amount":    int64(100),
 			"app_type":  appTypeAPP,
 			"status":    billingStatusSettled,
 			"app_costs": []any{
@@ -409,12 +638,21 @@ func seedBillingMongo(
 						resourceMemory: int64(2048),
 						"7":            int64(2),
 					},
+					"used_amount": bson.M{
+						resourceCPU:    int64(10),
+						resourceMemory: int64(20),
+						"7":            int64(5),
+					},
 				},
 				bson.M{
 					"name": "launchpad-worker",
 					"used": bson.M{
 						resourceCPU:       int64(250),
 						resourceNodePorts: int64(1000),
+					},
+					"used_amount": bson.M{
+						resourceCPU:       int64(25),
+						resourceNodePorts: int64(40),
 					},
 				},
 				bson.M{
@@ -427,6 +665,7 @@ func seedBillingMongo(
 			"type":      billingTypeConsumption,
 			"owner":     "bob",
 			"namespace": "ns-bob",
+			"amount":    int64(50),
 			"app_type":  appTypeObjectStorage,
 			"status":    billingStatusSubscription,
 			"app_costs": []any{
@@ -436,6 +675,10 @@ func seedBillingMongo(
 						resourceCPU:     int64(500),
 						resourceNetwork: int64(4096),
 					},
+					"used_amount": bson.M{
+						resourceCPU:     int64(15),
+						resourceNetwork: int64(35),
+					},
 				},
 			},
 		},
@@ -444,6 +687,7 @@ func seedBillingMongo(
 			"type":      billingTypeConsumption,
 			"owner":     "outside-start",
 			"namespace": "ns-outside-start",
+			"amount":    int64(999),
 			"app_costs": []any{
 				bson.M{"used": bson.M{resourceCPU: int64(999)}},
 			},
@@ -453,6 +697,7 @@ func seedBillingMongo(
 			"type":      billingTypeConsumption,
 			"owner":     "outside-end",
 			"namespace": "ns-outside-end",
+			"amount":    int64(999),
 			"app_costs": []any{
 				bson.M{"used": bson.M{resourceCPU: int64(999)}},
 			},
@@ -462,6 +707,7 @@ func seedBillingMongo(
 			"type":      1,
 			"owner":     "wrong-type",
 			"namespace": "ns-wrong-type",
+			"amount":    int64(999),
 			"app_costs": []any{
 				bson.M{"used": bson.M{resourceCPU: int64(999)}},
 			},
@@ -611,4 +857,16 @@ func mergeLabels(baseLabels, extraLabels map[string]string) map[string]string {
 	maps.Copy(merged, extraLabels)
 
 	return merged
+}
+
+func pipelineHasStage(pipeline mongo.Pipeline, stageName string) bool {
+	for _, stage := range pipeline {
+		for _, element := range stage {
+			if element.Key == stageName {
+				return true
+			}
+		}
+	}
+
+	return false
 }

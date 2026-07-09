@@ -54,11 +54,33 @@ type resourceTotal struct {
 	Used float64
 }
 
+type amountTotal struct {
+	Amount float64
+}
+
+type resourceAmountKey struct {
+	Resource  string
+	Owner     string
+	Namespace string
+}
+
 type billingAggregateRow struct {
 	Owner     string `bson:"owner"`
 	Namespace string `bson:"namespace"`
 	Resource  string `bson:"resource"`
 	Used      any    `bson:"used"`
+}
+
+type billingResourceAmountRow struct {
+	Owner     string `bson:"owner"`
+	Namespace string `bson:"namespace"`
+	Resource  string `bson:"resource"`
+	Amount    any    `bson:"amount"`
+}
+
+type billingAggregateResult struct {
+	Resources       []billingAggregateRow      `bson:"resources"`
+	ResourceAmounts []billingResourceAmountRow `bson:"resource_amounts"`
 }
 
 type BillingSnapshot struct {
@@ -67,7 +89,9 @@ type BillingSnapshot struct {
 	WindowStart time.Time
 	WindowEnd   time.Time
 
-	Resources      map[resourceKey]resourceTotal
-	OwnerResources map[resourceKey]resourceTotal
-	Metrics        []prometheus.Metric
+	Resources            map[resourceKey]resourceTotal
+	OwnerResources       map[resourceKey]resourceTotal
+	ResourceAmounts      map[resourceAmountKey]amountTotal
+	OwnerResourceAmounts map[resourceAmountKey]amountTotal
+	Metrics              []prometheus.Metric
 }

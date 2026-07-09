@@ -20,8 +20,9 @@ type MongoConfig struct {
 type Config struct {
 	Mongo MongoConfig `yaml:"mongo" json:"mongo" envPrefix:"MONGO_"`
 
-	ScrapeInterval time.Duration `yaml:"scrapeInterval" json:"scrape_interval" env:"SCRAPE_INTERVAL"`
-	QueryTimeout   time.Duration `yaml:"queryTimeout"   json:"query_timeout"   env:"QUERY_TIMEOUT"`
+	ScrapeInterval     time.Duration `yaml:"scrapeInterval"     json:"scrape_interval"      env:"SCRAPE_INTERVAL"`
+	QueryTimeout       time.Duration `yaml:"queryTimeout"       json:"query_timeout"        env:"QUERY_TIMEOUT"`
+	EnableOwnerMetrics bool          `yaml:"enableOwnerMetrics" json:"enable_owner_metrics" env:"ENABLE_OWNER_METRICS"`
 }
 
 // NewDefaultConfig returns the default configuration for the billing collector.

@@ -50,7 +50,7 @@ The raw Sealos data has several important characteristics:
 | CPU unit | CPU usage uses `1m`; divide by `1000` to convert to CPU cores. |
 | Memory and storage unit | Memory and storage normally use `1Mi`. |
 | Network unit | Network normally uses `1Mi`; Sealos stores hourly sent traffic for billing. |
-| Price fields | `billing.amount`, `app_costs[].amount`, and `app_costs[].used_amount` are price-derived fields. This collector ignores them. |
+| Price fields | `billing.amount` is the record total. `app_costs[].amount` is the app item total. `app_costs[].used_amount` is the resource-level amount map. The collector emits amount values without currency or unit labels. |
 | Aggregation type | The `properties.price_type` controls how billing was generated: `AVG`, `SUM`, or `DIF`. The finalized `billing.app_costs[].used` already reflects that aggregation. |
 | Ownership | `owner` is the Sealos user owner. `namespace` is the charged namespace. |
 | App grouping | `app_type` identifies broad Sealos app categories; `app_costs[].type` and `app_costs[].name` identify entries inside the billing record. |
@@ -174,7 +174,7 @@ For this billing record:
 | `app_type` | App type enum. `2` means `APP`. |
 | `status` | Billing status enum. `1` means `settled`. |
 | `app_costs[].used` | Hourly billed resource usage. |
-| `app_costs[].used_amount` | Price-derived amount. This collector reads `used` for resource metrics. |
+| `app_costs[].used_amount` | Price-derived amount by resource enum. The collector reads this map for resource amount metrics. |
 
 `app_costs[].used` in the example maps to:
 
@@ -269,7 +269,9 @@ The collector emits these metric names:
 | Metric | Meaning |
 | --- | --- |
 | `sealos_billing_resource_usage` | Cluster-wide hourly billed usage by resource and unit. |
-| `sealos_billing_owner_resource_usage` | Hourly billed usage by owner, namespace, resource, and unit. |
+| `sealos_billing_owner_resource_usage` | Hourly billed usage by owner, namespace, resource, and unit. Emitted only when `enableOwnerMetrics=true`. |
+| `sealos_billing_resource_amount` | Cluster-wide billing amount by resource over the previous complete hourly window. |
+| `sealos_billing_owner_resource_amount` | Billing amount by owner, namespace, and resource over the previous complete hourly window. Emitted only when `enableOwnerMetrics=true`. |
 | `sealos_billing_last_success_timestamp_seconds` | Last successful MongoDB collection Unix timestamp. |
 
 `window_start` and `window_end` are Unix seconds and identify the exact billing
@@ -325,6 +327,53 @@ sealos_billing_owner_resource_usage{window_start="1760000000",window_end="176000
 sealos_billing_owner_resource_usage{window_start="1760000000",window_end="1760003600",owner="user-a",namespace="ns-user-a",resource="memory",unit="1Mi"} 2048
 sealos_billing_owner_resource_usage{window_start="1760000000",window_end="1760003600",owner="user-a",namespace="ns-user-a",resource="storage",unit="1Mi"} 51200
 sealos_billing_owner_resource_usage{window_start="1760000000",window_end="1760003600",owner="user-a",namespace="ns-user-a",resource="network",unit="1Mi"} 10240
+```
+
+### `sealos_billing_resource_amount`
+
+Raw billing amount grouped by resource across all owners and namespaces. The
+value comes from `billing.app_costs[].used_amount`.
+
+Type: Gauge
+
+Labels:
+
+| Label | Source |
+| --- | --- |
+| `window_start` | Billing query window start Unix seconds. |
+| `window_end` | Billing query window end Unix seconds. |
+| `resource` | `properties.name`, fallback defaults, or `resource_unknown_<enum>` |
+
+Example:
+
+```text
+sealos_billing_resource_amount{window_start="1760000000",window_end="1760003600",resource="cpu"} 67124
+sealos_billing_resource_amount{window_start="1760000000",window_end="1760003600",resource="memory"} 33512
+sealos_billing_resource_amount{window_start="1760000000",window_end="1760003600",resource="services.nodeports"} 2083
+```
+
+### `sealos_billing_owner_resource_amount`
+
+Raw billing amount grouped by Sealos owner, namespace, and resource. This metric
+is emitted when `enableOwnerMetrics=true`.
+
+Type: Gauge
+
+Labels:
+
+| Label | Source |
+| --- | --- |
+| `window_start` | Billing query window start Unix seconds. |
+| `window_end` | Billing query window end Unix seconds. |
+| `owner` | `billing.owner` |
+| `namespace` | `billing.namespace` |
+| `resource` | `properties.name`, fallback defaults, or `resource_unknown_<enum>` |
+
+Example:
+
+```text
+sealos_billing_owner_resource_amount{window_start="1760000000",window_end="1760003600",owner="user-a",namespace="ns-user-a",resource="cpu"} 33562
+sealos_billing_owner_resource_amount{window_start="1760000000",window_end="1760003600",owner="user-a",namespace="ns-user-a",resource="memory"} 16756
 ```
 
 ### `sealos_billing_last_success_timestamp_seconds`
@@ -383,6 +432,7 @@ collectors:
   billing:
     scrapeInterval: "5m"
     queryTimeout: "30s"
+    enableOwnerMetrics: false
     mongo:
       uri: "mongodb://username:password@mongodb.account-system.svc:27017"
       database: "sealos-resources"
@@ -396,6 +446,7 @@ Fields:
 | --- | --- | --- |
 | `scrapeInterval` | `5m` | MongoDB scrape interval. |
 | `queryTimeout` | `30s` | MongoDB connection and query timeout. |
+| `enableOwnerMetrics` | `false` | Enable owner/namespace-level Mongo aggregation and `sealos_billing_owner_*` metrics. |
 | `mongo.uri` | empty | MongoDB URI. |
 | `mongo.database` | `sealos-resources` | MongoDB database name. |
 | `mongo.billingCollection` | `billing` | MongoDB billing collection name. |
@@ -413,6 +464,7 @@ Examples:
 COLLECTORS_BILLING_MONGO_URI='mongodb://user:pass@mongo:27017'
 COLLECTORS_BILLING_SCRAPE_INTERVAL='5m'
 COLLECTORS_BILLING_QUERY_TIMEOUT='30s'
+COLLECTORS_BILLING_ENABLE_OWNER_METRICS='false'
 ```
 
 ## Mongo Query Behavior
@@ -436,15 +488,31 @@ The collector queries `billing` with this match condition:
 }
 ```
 
-Aggregation is executed inside MongoDB:
+Aggregation is executed inside MongoDB with two independent aggregation
+commands: one for `app_costs.used`, and one for `app_costs.used_amount`. The two
+commands run concurrently during a scrape and each command returns one cursor row
+per aggregate group.
+
+With `enableOwnerMetrics=false`, MongoDB groups resources and resource amounts
+by resource enum. The collector emits cluster-level samples.
+
+With `enableOwnerMetrics=true`, MongoDB additionally groups by `owner` and
+`namespace`, and the collector emits the owner-level metrics.
 
 1. Match the previous complete billing hour.
-2. Project `owner`, `namespace`, and `app_costs`.
+2. In the resource usage aggregation, project `owner`, `namespace`, and
+   `app_costs`.
 3. Unwind `app_costs`.
 4. Convert `app_costs.used` from an object such as `{ "0": 500, "1": 1024 }`
    into key/value rows.
 5. Group by `owner`, `namespace`, and resource enum.
-6. Sum `used` per group.
+6. Sum `used` per resource group.
+7. In the resource amount aggregation, convert `app_costs.used_amount` into
+   key/value rows.
+8. Sum `used_amount` per resource group.
+
+The collector uses separate cursor results for usage and amount aggregates. This
+keeps high-cardinality owner results distributed across MongoDB cursor batches.
 
 The collector receives rows shaped like this:
 
@@ -459,6 +527,17 @@ The collector receives rows shaped like this:
 
 The resource enum is then mapped through `properties` and emitted as
 Prometheus labels.
+
+Resource amount rows have the same enum mapping:
+
+```json
+{
+  "owner": "user-a",
+  "namespace": "ns-user-a",
+  "resource": "0",
+  "amount": 67124
+}
+```
 
 ### Recommended Index
 
@@ -482,7 +561,7 @@ That index is useful for owner-scoped account queries. The collector scans by
 `type` and `time`, so `{ type: 1, time: 1 }` gives MongoDB a direct range scan
 for the scrape window.
 
-Check the query plan with:
+Check the resource usage query plan with:
 
 ```javascript
 db.getSiblingDB("sealos-resources").billing.explain("executionStats").aggregate([
@@ -514,8 +593,80 @@ db.getSiblingDB("sealos-resources").billing.explain("executionStats").aggregate(
       },
       used: { $sum: "$used.v" }
     }
+  },
+  {
+    $project: {
+      _id: 0,
+      owner: "$_id.owner",
+      namespace: "$_id.namespace",
+      resource: "$_id.resource",
+      used: 1
+    }
   }
 ])
+```
+
+Check the resource amount query plan with:
+
+```javascript
+db.getSiblingDB("sealos-resources").billing.explain("executionStats").aggregate([
+  {
+    $match: {
+      type: 0,
+      time: {
+        $gt: ISODate("2026-07-09T01:00:00Z"),
+        $lte: ISODate("2026-07-09T02:00:00Z")
+      }
+    }
+  },
+  { $project: { owner: 1, namespace: 1, app_costs: 1 } },
+  { $unwind: "$app_costs" },
+  {
+    $project: {
+      owner: 1,
+      namespace: 1,
+      amount: { $objectToArray: { $ifNull: ["$app_costs.used_amount", {}] } }
+    }
+  },
+  { $unwind: "$amount" },
+  {
+    $group: {
+      _id: {
+        owner: "$owner",
+        namespace: "$namespace",
+        resource: "$amount.k"
+      },
+      amount: { $sum: "$amount.v" }
+    }
+  },
+  {
+    $project: {
+      _id: 0,
+      owner: "$_id.owner",
+      namespace: "$_id.namespace",
+      resource: "$_id.resource",
+      amount: 1
+    }
+  }
+])
+```
+
+Total billing amount for the previous complete hourly billing window:
+
+```promql
+sum(sealos_billing_resource_amount)
+```
+
+Billing amount by resource:
+
+```promql
+sum by (resource) (sealos_billing_resource_amount)
+```
+
+Billing amount by owner and resource. Requires `enableOwnerMetrics=true`:
+
+```promql
+sum by (owner, resource) (sealos_billing_owner_resource_amount)
 ```
 
 ## PromQL Examples

@@ -118,6 +118,7 @@ collectors:
   billing:
     scrapeInterval: "5m"
     queryTimeout: "30s"
+    enableOwnerMetrics: false
     mongo:
       uri: "mongodb://username:password@mongodb.account-system.svc:27017"
       database: "sealos-resources"
