@@ -6,7 +6,10 @@ import (
 
 // DatabaseConfig holds database connection configuration
 type DatabaseConfig struct {
-	DSN string `yaml:"dsn" json:"dsn"` // Database connection string
+	// DSN connects to the global user and account database.
+	DSN string `yaml:"dsn" json:"dsn"`
+	// LocalDSN optionally connects to the regional UserCr database.
+	LocalDSN string `yaml:"localDsn" json:"local_dsn" env:"LOCAL_DSN"`
 }
 
 // UserConfig holds configuration for a single user/account
@@ -36,7 +39,8 @@ type Config struct {
 func NewDefaultConfig() *Config {
 	return &Config{
 		DatabaseConfig: DatabaseConfig{
-			DSN: "",
+			DSN:      "",
+			LocalDSN: "",
 		},
 		UserConfig:    []UserConfig{},
 		CheckInterval: 5 * time.Minute,

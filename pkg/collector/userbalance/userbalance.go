@@ -17,6 +17,8 @@ type Collector struct {
 	config   *Config
 	logger   *log.Entry
 	pgClient *pgxpool.Pool
+	// localPgClient selects discovered users belonging to this region.
+	localPgClient *pgxpool.Pool
 
 	// Prometheus metrics
 	balanceGauge *prometheus.Desc
@@ -123,6 +125,36 @@ func (c *Collector) Poll(ctx context.Context) error {
 			c.logger.WithError(err).
 				Warn("Positive-balance user discovery failed, using configured users only")
 		} else {
+			if len(samples) > 0 && c.config.DatabaseConfig.LocalDSN != "" {
+				if c.localPgClient == nil {
+					c.logger.Warn("Local user database unavailable, skipping discovered users")
+
+					samples = nil
+				} else {
+					owners, ownerErr := c.QueryOwners(ctx, sampleUUIDs(samples))
+					if ownerErr != nil {
+						c.logger.WithError(ownerErr).
+							Warn("User owner query failed, skipping discovered users")
+
+						samples = nil
+					} else {
+						regionalSamples := make([]balanceSample, 0, len(samples))
+						for _, sample := range samples {
+							for _, owner := range owners[sample.User.UUID] {
+								if owner == "" {
+									continue
+								}
+
+								sample.User.Owner = owner
+								regionalSamples = append(regionalSamples, sample)
+							}
+						}
+
+						samples = regionalSamples
+					}
+				}
+			}
+
 			discoveredCount := 0
 			for _, sample := range samples {
 				if userConfigured(sample.User, configuredUsers) {
@@ -145,6 +177,17 @@ func (c *Collector) Poll(ctx context.Context) error {
 	c.mu.Unlock()
 
 	return nil
+}
+
+func sampleUUIDs(samples []balanceSample) []string {
+	uuids := make([]string, 0, len(samples))
+	for _, sample := range samples {
+		if sample.User.UUID != "" {
+			uuids = append(uuids, sample.User.UUID)
+		}
+	}
+
+	return uuids
 }
 
 // collect implements the collect method for Prometheus

@@ -55,14 +55,12 @@ func (c *Collector) QueryPositiveBalances(ctx context.Context) ([]balanceSample,
             COALESCE(a.create_region_id, '') as region,
             u.uid::text as uuid,
             u.id as uid,
-            uc."crName" as owner,
             COALESCE(a.balance, 0) as balance,
             COALESCE(a.deduction_balance, 0) as deduction_balance
         FROM "Account" a
         JOIN "User" u ON u.uid = a."userUid"
-        JOIN "UserCr" uc ON uc."userUid" = u.uid
         WHERE COALESCE(a.balance, 0) - COALESCE(a.deduction_balance, 0) > 0
-        ORDER BY owner, uid
+        ORDER BY uid
     `
 
 	rows, err := c.pgClient.Query(ctx, query)
@@ -82,7 +80,6 @@ func (c *Collector) QueryPositiveBalances(ctx context.Context) ([]balanceSample,
 			&user.Region,
 			&user.UUID,
 			&user.UID,
-			&user.Owner,
 			&balance,
 			&deductionBalance,
 		); err != nil {
@@ -101,6 +98,44 @@ func (c *Collector) QueryPositiveBalances(ctx context.Context) ([]balanceSample,
 	}
 
 	return samples, nil
+}
+
+func (c *Collector) QueryOwners(
+	ctx context.Context,
+	userUUIDs []string,
+) (map[string][]string, error) {
+	owners := make(map[string][]string, len(userUUIDs))
+	if c.localPgClient == nil || len(userUUIDs) == 0 {
+		return owners, nil
+	}
+
+	query := `
+        SELECT "userUid"::text, "crName"
+        FROM "UserCr"
+        WHERE "userUid"::text = ANY($1::text[])
+        ORDER BY "userUid", "crName"
+    `
+
+	rows, err := c.localPgClient.Query(ctx, query, userUUIDs)
+	if err != nil {
+		return nil, fmt.Errorf("query user owners failed: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var userUUID, owner string
+		if err := rows.Scan(&userUUID, &owner); err != nil {
+			return nil, fmt.Errorf("scan user owner: %w", err)
+		}
+
+		owners[userUUID] = append(owners[userUUID], owner)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate user owners: %w", err)
+	}
+
+	return owners, nil
 }
 
 func roundBalance(balance, deductionBalance int64) float64 {

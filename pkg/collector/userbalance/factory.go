@@ -56,6 +56,20 @@ func NewCollector(factoryCtx *collector.FactoryContext) (collector.Collector, er
 			}
 
 			c.pgClient = pgClient
+			if cfg.DatabaseConfig.LocalDSN != "" {
+				localPgClient, localErr := database.InitPgClient(
+					ctx,
+					cfg.DatabaseConfig.LocalDSN,
+					database.WithMinConns(1),
+				)
+				if localErr != nil {
+					factoryCtx.Logger.WithError(localErr).
+						Warn("Failed to initialize local postgres client; discovered users will be skipped")
+				} else {
+					c.localPgClient = localPgClient
+				}
+			}
+
 			// Start background polling
 			go c.pollLoop(ctx)
 
@@ -67,10 +81,16 @@ func NewCollector(factoryCtx *collector.FactoryContext) (collector.Collector, er
 		StopFunc: func() error {
 			if c.pgClient != nil {
 				c.pgClient.Close()
-				c.logger.Debug("Database connection closed")
 			}
 
+			if c.localPgClient != nil {
+				c.localPgClient.Close()
+			}
+
+			c.logger.Debug("Database connections closed")
+
 			c.pgClient = nil
+			c.localPgClient = nil
 
 			return nil
 		},

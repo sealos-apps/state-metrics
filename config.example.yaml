@@ -97,6 +97,10 @@ collectors:
     # user postgres dsn
     database:
       dsn: "postgresql://username:password@www.example.com:port/defaultdb"
+      # Optional regional database used only to map userUid to UserCr.crName.
+      # When empty, all discovered users are emitted with owner="". When set,
+      # only users mapped by this region's UserCr table are emitted.
+      localDsn: ""
     # Auto-discover users whose Account.balance - Account.deduction_balance is
     # greater than 0. Users listed below are always collected and override
     # labels for matching auto-discovered users.
