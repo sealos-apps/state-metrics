@@ -3,8 +3,12 @@ package userbalance
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
+	"os"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,6 +20,41 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
+
+var (
+	sharedPostgresOnce      sync.Once
+	sharedPostgresContainer testcontainers.Container
+	sharedPostgresAdminPool *pgxpool.Pool
+	sharedPostgresDSNPrefix string
+	errSharedPostgres       error
+	testDatabaseSequence    atomic.Uint64
+)
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+
+	if sharedPostgresAdminPool != nil {
+		sharedPostgresAdminPool.Close()
+	}
+
+	if sharedPostgresContainer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err := testcontainers.TerminateContainer(
+			sharedPostgresContainer,
+			testcontainers.StopContext(ctx),
+			testcontainers.StopTimeout(time.Second),
+		)
+
+		cancel()
+
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "terminate shared postgres container: %v\n", err)
+			code = 1
+		}
+	}
+
+	os.Exit(code)
+}
 
 func TestPollSkipsCollectionWhenNoUsersAndPositiveDiscoveryDisabled(t *testing.T) {
 	c := newTestCollector(t, NewDefaultConfig(), nil, nil)
@@ -847,6 +886,45 @@ type testPostgresDatabases struct {
 func startPostgresContainer(t *testing.T, ctx context.Context) *testPostgresDatabases {
 	t.Helper()
 
+	sharedPostgresOnce.Do(func() {
+		errSharedPostgres = startSharedPostgres(ctx)
+	})
+
+	if errSharedPostgres != nil {
+		t.Fatalf("start shared postgres container: %v", errSharedPostgres)
+	}
+
+	sequence := testDatabaseSequence.Add(1)
+	globalDatabase := fmt.Sprintf("globaldb_%d", sequence)
+
+	localDatabase := fmt.Sprintf("localdb_%d", sequence)
+	for _, databaseName := range []string{globalDatabase, localDatabase} {
+		if _, err := sharedPostgresAdminPool.Exec(
+			ctx,
+			"CREATE DATABASE "+databaseName,
+		); err != nil {
+			t.Fatalf("create postgres database %s: %v", databaseName, err)
+		}
+	}
+
+	globalPool := connectTestPostgres(
+		t,
+		ctx,
+		sharedPostgresDSNPrefix+"/"+globalDatabase+"?sslmode=disable",
+	)
+	localPool := connectTestPostgres(
+		t,
+		ctx,
+		sharedPostgresDSNPrefix+"/"+localDatabase+"?sslmode=disable",
+	)
+
+	return &testPostgresDatabases{
+		global: globalPool,
+		local:  localPool,
+	}
+}
+
+func startSharedPostgres(ctx context.Context) error {
 	waitStrategy := wait.ForListeningPort("5432/tcp").
 		WithStartupTimeout(90 * time.Second)
 
@@ -854,7 +932,7 @@ func startPostgresContainer(t *testing.T, ctx context.Context) *testPostgresData
 		ctx,
 		"postgres:16-alpine",
 		testcontainers.WithEnv(map[string]string{
-			"POSTGRES_DB":       "globaldb",
+			"POSTGRES_DB":       "postgres",
 			"POSTGRES_PASSWORD": "postgres",
 			"POSTGRES_USER":     "postgres",
 		}),
@@ -862,38 +940,37 @@ func startPostgresContainer(t *testing.T, ctx context.Context) *testPostgresData
 		testcontainers.WithWaitStrategy(waitStrategy),
 	)
 	if err != nil {
-		t.Fatalf("start postgres container: %v", err)
+		return fmt.Errorf("run postgres container: %w", err)
 	}
 
-	t.Cleanup(func() {
-		if err := testcontainers.TerminateContainer(ctr); err != nil {
-			t.Fatalf("terminate postgres container: %v", err)
-		}
-	})
+	sharedPostgresContainer = ctr
 
 	host, err := ctr.Host(ctx)
 	if err != nil {
-		t.Fatalf("get postgres host: %v", err)
+		return fmt.Errorf("get postgres host: %w", err)
 	}
 
 	port, err := ctr.MappedPort(ctx, "5432/tcp")
 	if err != nil {
-		t.Fatalf("get postgres port: %v", err)
+		return fmt.Errorf("get postgres port: %w", err)
 	}
 
-	dsnPrefix := "postgres://postgres:postgres@" + net.JoinHostPort(host, port.Port())
-	globalPool := connectTestPostgres(t, ctx, dsnPrefix+"/globaldb?sslmode=disable")
+	sharedPostgresDSNPrefix = "postgres://postgres:postgres@" +
+		net.JoinHostPort(host, port.Port())
 
-	if _, err := globalPool.Exec(ctx, `CREATE DATABASE localdb`); err != nil {
-		t.Fatalf("create local postgres database: %v", err)
+	sharedPostgresAdminPool, err = pgxpool.New(
+		ctx,
+		sharedPostgresDSNPrefix+"/postgres?sslmode=disable",
+	)
+	if err != nil {
+		return fmt.Errorf("connect postgres admin database: %w", err)
 	}
 
-	localPool := connectTestPostgres(t, ctx, dsnPrefix+"/localdb?sslmode=disable")
-
-	return &testPostgresDatabases{
-		global: globalPool,
-		local:  localPool,
+	if err := sharedPostgresAdminPool.Ping(ctx); err != nil {
+		return fmt.Errorf("ping postgres admin database: %w", err)
 	}
+
+	return nil
 }
 
 func connectTestPostgres(t *testing.T, ctx context.Context, dsn string) *pgxpool.Pool {
