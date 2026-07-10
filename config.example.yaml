@@ -97,6 +97,10 @@ collectors:
     # user postgres dsn
     database:
       dsn: "postgresql://username:password@www.example.com:port/defaultdb"
+    # Auto-discover users whose Account.balance - Account.deduction_balance is
+    # greater than 0. Users listed below are always collected and override
+    # labels for matching auto-discovered users.
+    positiveBalanceUsers: false
     # sealos user list
     users:
       - region: us-west-2

@@ -35,7 +35,7 @@ func NewCollector(factoryCtx *collector.FactoryContext) (collector.Collector, er
 			base.WithWaitReadyOnCollect(true),
 		),
 		config:   cfg,
-		balances: make(map[string]float64),
+		balances: make(map[string]balanceSample),
 		logger:   factoryCtx.Logger,
 	}
 

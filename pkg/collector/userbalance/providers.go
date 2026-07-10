@@ -7,7 +7,7 @@ import (
 	"math"
 )
 
-func (c *Collector) QueryBalance(user UserConfig) (float64, error) {
+func (c *Collector) QueryBalance(ctx context.Context, user UserConfig) (float64, error) {
 	if c.pgClient == nil {
 		return 0, errors.New("database client is not initialized")
 	}
@@ -30,7 +30,7 @@ func (c *Collector) QueryBalance(user UserConfig) (float64, error) {
 		balance, deductionBalance     int64
 	)
 
-	err := c.pgClient.QueryRow(context.Background(), query, user.UID).Scan(
+	err := c.pgClient.QueryRow(ctx, query, user.UID).Scan(
 		&uid,
 		&id,
 		&name,
@@ -42,7 +42,67 @@ func (c *Collector) QueryBalance(user UserConfig) (float64, error) {
 		return 0, fmt.Errorf("query user balance failed: %w", err)
 	}
 
-	actualBalance := math.Round(float64(balance-deductionBalance)/1000000*100) / 100
+	return roundBalance(balance, deductionBalance), nil
+}
 
-	return actualBalance, nil
+func (c *Collector) QueryPositiveBalances(ctx context.Context) ([]balanceSample, error) {
+	if c.pgClient == nil {
+		return nil, errors.New("database client is not initialized")
+	}
+
+	query := `
+        SELECT
+            COALESCE(a.create_region_id, '') as region,
+            u.uid::text as uuid,
+            u.id as uid,
+            uc."crName" as owner,
+            COALESCE(a.balance, 0) as balance,
+            COALESCE(a.deduction_balance, 0) as deduction_balance
+        FROM "Account" a
+        JOIN "User" u ON u.uid = a."userUid"
+        JOIN "UserCr" uc ON uc."userUid" = u.uid
+        WHERE COALESCE(a.balance, 0) - COALESCE(a.deduction_balance, 0) > 0
+        ORDER BY owner, uid
+    `
+
+	rows, err := c.pgClient.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("query positive user balances failed: %w", err)
+	}
+	defer rows.Close()
+
+	var samples []balanceSample
+	for rows.Next() {
+		var (
+			user                      UserConfig
+			balance, deductionBalance int64
+		)
+
+		if err := rows.Scan(
+			&user.Region,
+			&user.UUID,
+			&user.UID,
+			&user.Owner,
+			&balance,
+			&deductionBalance,
+		); err != nil {
+			return nil, fmt.Errorf("scan positive user balance: %w", err)
+		}
+
+		user.Type = "balance"
+		samples = append(samples, balanceSample{
+			User:    user,
+			Balance: roundBalance(balance, deductionBalance),
+		})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate positive user balances: %w", err)
+	}
+
+	return samples, nil
+}
+
+func roundBalance(balance, deductionBalance int64) float64 {
+	return math.Round(float64(balance-deductionBalance)/1000000*100) / 100
 }

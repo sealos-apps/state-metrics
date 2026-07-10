@@ -22,9 +22,14 @@ type UserConfig struct {
 
 // Config contains configuration for the UserBalance collector
 type Config struct {
-	DatabaseConfig DatabaseConfig `yaml:"database"      json:"database"`                            // Database configuration
-	UserConfig     []UserConfig   `yaml:"users"         json:"users"`                               // User configurations list
-	CheckInterval  time.Duration  `yaml:"checkInterval" json:"check_interval" env:"CHECK_INTERVAL"` // Check interval duration
+	// DatabaseConfig stores the PostgreSQL/CockroachDB connection string.
+	DatabaseConfig DatabaseConfig `yaml:"database" json:"database"`
+	// UserConfig lists explicitly monitored users.
+	UserConfig []UserConfig `yaml:"users" json:"users"`
+	// CheckInterval controls balance polling frequency.
+	CheckInterval time.Duration `yaml:"checkInterval" json:"check_interval" env:"CHECK_INTERVAL"`
+	// PositiveBalanceUsers discovers users with positive available balance.
+	PositiveBalanceUsers bool `yaml:"positiveBalanceUsers" json:"positive_balance_users" env:"POSITIVE_BALANCE_USERS"`
 }
 
 // NewDefaultConfig returns the default configuration for UserBalance collector

@@ -23,7 +23,14 @@ type Collector struct {
 
 	// Internal state
 	mu       sync.RWMutex
-	balances map[string]float64
+	balances map[string]balanceSample
+}
+
+type balanceSample struct {
+	User      UserConfig
+	Balance   float64
+	EmitQuota bool
+	Source    string
 }
 
 // initMetrics initializes Prometheus metric descriptors
@@ -31,7 +38,7 @@ func (c *Collector) initMetrics(namespace string) {
 	c.balanceGauge = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "userbalance", "balance"),
 		"Current balance for each sealos user",
-		[]string{"region", "uuid", "uid", "owner", "type", "level"},
+		[]string{"region", "uuid", "uid", "owner", "type", "level", "source"},
 		nil,
 	)
 
@@ -57,40 +64,80 @@ func (c *Collector) pollLoop(ctx context.Context) {
 	})
 }
 
-// Poll queries all configured user accounts
+// Poll queries configured user accounts and optionally discovers positive-balance users.
 func (c *Collector) Poll(ctx context.Context) error {
-	if len(c.config.UserConfig) == 0 {
+	if len(c.config.UserConfig) == 0 && !c.config.PositiveBalanceUsers {
 		c.logger.Debug("No sealos user configured for monitoring")
 		return nil
 	}
 
-	c.logger.WithField("count", len(c.config.UserConfig)).Info("Starting cloud balance checks")
+	newBalances := make(map[string]balanceSample, len(c.config.UserConfig))
+	configuredUsers := make(map[string]struct{}, len(c.config.UserConfig))
 
-	newBalances := make(map[string]float64)
-	for _, user := range c.config.UserConfig {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
+	if len(c.config.UserConfig) > 0 {
+		c.logger.WithField("count", len(c.config.UserConfig)).Info("Starting user balance checks")
 
-		balance, err := c.QueryBalance(user)
-		if err != nil {
+		for _, user := range c.config.UserConfig {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			balance, err := c.QueryBalance(ctx, user)
+			if err != nil {
+				c.logger.WithFields(log.Fields{
+					"user_id": user.UID,
+				}).WithError(err).Error("Failed to query sealos user balance")
+
+				continue
+			}
+
+			user = normalizeUserLabels(user)
+
+			newBalances[userKey(user)] = balanceSample{
+				User:      user,
+				Balance:   balance,
+				EmitQuota: true,
+				Source:    "configured",
+			}
+			for _, key := range userIdentityKeys(user) {
+				configuredUsers[key] = struct{}{}
+			}
+
 			c.logger.WithFields(log.Fields{
-				"user_id": user.UID,
-			}).WithError(err).Error("Failed to query sealos user balance")
-
-			continue
+				"region":  user.Region,
+				"uid":     user.UID,
+				"balance": balance,
+			}).Debug("User balance updated")
 		}
+	}
 
-		key := user.Region + ":" + user.UID
-		newBalances[key] = balance
+	if c.config.PositiveBalanceUsers {
+		samples, err := c.QueryPositiveBalances(ctx)
+		if err != nil {
+			if len(c.config.UserConfig) == 0 {
+				return err
+			}
 
-		c.logger.WithFields(log.Fields{
-			"region":  user.Region,
-			"uid":     user.UID,
-			"balance": balance,
-		}).Debug("User balance updated")
+			c.logger.WithError(err).
+				Warn("Positive-balance user discovery failed, using configured users only")
+		} else {
+			discoveredCount := 0
+			for _, sample := range samples {
+				if userConfigured(sample.User, configuredUsers) {
+					continue
+				}
+
+				sample.User = normalizeUserLabels(sample.User)
+				sample.Source = "discovered"
+				newBalances[userKey(sample.User)] = sample
+				discoveredCount++
+			}
+
+			c.logger.WithField("count", discoveredCount).
+				Info("Positive-balance users updated")
+		}
 	}
 
 	c.mu.Lock()
@@ -105,25 +152,25 @@ func (c *Collector) collect(ch chan<- prometheus.Metric) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	for _, user := range c.config.UserConfig {
-		key := user.Region + ":" + user.UID
-
-		balance, exists := c.balances[key]
-		if !exists {
-			continue
-		}
+	for _, sample := range c.balances {
+		user := sample.User
 
 		ch <- prometheus.MustNewConstMetric(
 			c.balanceGauge,
 			prometheus.GaugeValue,
-			balance,
+			sample.Balance,
 			user.Region,
 			user.UUID,
 			user.UID,
 			user.Owner,
 			user.Type,
 			user.Level,
+			sample.Source,
 		)
+
+		if !sample.EmitQuota {
+			continue
+		}
 
 		user.Type = "quota"
 		ch <- prometheus.MustNewConstMetric(
@@ -136,6 +183,50 @@ func (c *Collector) collect(ch chan<- prometheus.Metric) {
 			user.Owner,
 			user.Type,
 			user.Level,
+			sample.Source,
 		)
 	}
+}
+
+func userKey(user UserConfig) string {
+	return user.Region + ":" + user.UUID + ":" + user.UID + ":" + user.Owner + ":" + user.Type + ":" + user.Level
+}
+
+func normalizeUserLabels(user UserConfig) UserConfig {
+	if user.Region == "" {
+		user.Region = "default"
+	}
+
+	if user.Level == "" {
+		user.Level = "default"
+	}
+
+	return user
+}
+
+func userConfigured(user UserConfig, configuredUsers map[string]struct{}) bool {
+	for _, key := range userIdentityKeys(user) {
+		if _, ok := configuredUsers[key]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+func userIdentityKeys(user UserConfig) []string {
+	keys := make([]string, 0, 3)
+	if user.UID != "" {
+		keys = append(keys, "uid:"+user.UID)
+	}
+
+	if user.UUID != "" {
+		keys = append(keys, "uuid:"+user.UUID)
+	}
+
+	if user.Owner != "" {
+		keys = append(keys, "owner:"+user.Owner)
+	}
+
+	return keys
 }
