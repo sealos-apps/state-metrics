@@ -48,7 +48,7 @@ func NewCollector(factoryCtx *collector.FactoryContext) (collector.Collector, er
 				SetConnectTimeout(cfg.QueryTimeout).
 				SetServerSelectionTimeout(cfg.QueryTimeout).
 				SetSocketTimeout(cfg.QueryTimeout).
-				SetMaxPoolSize(2)
+				SetMaxPoolSize(4)
 
 			client, err := mongo.Connect(ctx, clientOptions)
 			if err != nil {

@@ -51,6 +51,7 @@ The raw Sealos data has several important characteristics:
 | Memory and storage unit | Memory and storage normally use `1Mi`. |
 | Network unit | Network normally uses `1Mi`; Sealos stores hourly sent traffic for billing. |
 | Price fields | `billing.amount` is the record total. `app_costs[].amount` is the app item total. `app_costs[].used_amount` is the resource-level amount map. Sealos stores raw amount values in 1/1000000 base units. The collector emits raw amount values without currency labels. |
+| LLM token billing | `type=1`, `app_type=11` records store AIProxy/LLM token charges in the top-level `amount`; the collector exposes them as `resource="llm_tokens"` amount metrics. |
 | Aggregation type | The `properties.price_type` controls how billing was generated: `AVG`, `SUM`, or `DIF`. The finalized `billing.app_costs[].used` already reflects that aggregation. |
 | Ownership | `owner` is the Sealos user owner. `namespace` is the charged namespace. |
 | App grouping | `app_type` identifies broad Sealos app categories; `app_costs[].type` and `app_costs[].name` identify entries inside the billing record. |
@@ -182,6 +183,7 @@ For this billing record:
 | --- | --- | --- | --- |
 | `0` | `cpu` | `1m` | `500m`, equal to `0.5` average CPU cores for the billing hour. |
 | `1` | `memory` | `1Mi` | `1024Mi` average memory for the billing hour. |
+| `2` | `storage` | `1Mi` | Storage usage, split by `app_costs.type` into PVC, database backup, and object storage. |
 | `3` | `network` | `1Mi` | `2048Mi` sent during the billing hour. |
 
 ## Hourly Query Window
@@ -331,8 +333,9 @@ sealos_billing_owner_resource_usage{window_start="1760000000",window_end="176000
 
 ### `sealos_billing_resource_amount`
 
-Raw billing amount grouped by resource across all owners and namespaces. The
-value comes from `billing.app_costs[].used_amount`.
+Raw billing amount grouped by resource across all owners and namespaces. Values
+come from `billing.app_costs[].used_amount`; AIProxy/LLM token charges come from
+the top-level `billing.amount` on `type=1`, `app_type=11` records.
 
 Type: Gauge
 
@@ -350,6 +353,7 @@ Example:
 sealos_billing_resource_amount{window_start="1760000000",window_end="1760003600",resource="cpu"} 67124
 sealos_billing_resource_amount{window_start="1760000000",window_end="1760003600",resource="memory"} 33512
 sealos_billing_resource_amount{window_start="1760000000",window_end="1760003600",resource="services.nodeports"} 2083
+sealos_billing_resource_amount{window_start="1760000000",window_end="1760003600",resource="llm_tokens"} 912345
 ```
 
 ### `sealos_billing_owner_resource_amount`
@@ -374,6 +378,7 @@ Example:
 ```text
 sealos_billing_owner_resource_amount{window_start="1760000000",window_end="1760003600",owner="user-a",namespace="ns-user-a",resource="cpu"} 33562
 sealos_billing_owner_resource_amount{window_start="1760000000",window_end="1760003600",owner="user-a",namespace="ns-user-a",resource="memory"} 16756
+sealos_billing_owner_resource_amount{window_start="1760000000",window_end="1760003600",owner="user-a",namespace="ns-user-a",resource="llm_tokens"} 456789
 ```
 
 ### `sealos_billing_last_success_timestamp_seconds`
@@ -699,6 +704,23 @@ Average billed storage MiB across the cluster:
 
 ```promql
 sum(sealos_billing_resource_usage{resource="storage", unit="1Mi"})
+```
+
+Storage usage by billing category:
+
+```promql
+sum(sealos_billing_resource_usage{resource=~"pvc_storage|database_backup|object_storage", unit="1Mi"})
+```
+
+The `storage` series is computed from the three category series during the
+same collector aggregation. The four storage resource names are reserved so a
+custom enum `2` property name cannot merge an aggregate and category series.
+This calculation does not issue a separate MongoDB query.
+
+Storage amount by billing category:
+
+```promql
+sum by (resource) (sealos_billing_resource_amount{resource=~"pvc_storage|database_backup|object_storage"}) / 1000000
 ```
 
 Billed network MiB in the previous complete hourly billing window:

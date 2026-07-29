@@ -167,10 +167,150 @@ func TestAggregateBillingDocuments(t *testing.T) {
 	}
 }
 
+func TestAggregateBillingRowsSplitsStorageAndBuildsTotal(t *testing.T) {
+	windowStart := time.Date(2026, time.July, 8, 0, 0, 0, 0, time.UTC)
+	windowEnd := windowStart.Add(time.Hour)
+	rows := []billingAggregateRow{
+		{
+			Resource:  resourceStorage,
+			AppType:   int32(appTypeAPP),
+			Used:      int64(1000),
+			Owner:     "alice",
+			Namespace: "ns-alice",
+		},
+		{
+			Resource:  resourceStorage,
+			AppType:   int32(appTypeDatabaseBackup),
+			Used:      int64(2000),
+			Owner:     "alice",
+			Namespace: "ns-alice",
+		},
+		{
+			Resource:  resourceStorage,
+			AppType:   int32(appTypeObjectStorage),
+			Used:      int64(3000),
+			Owner:     "bob",
+			Namespace: "ns-bob",
+		},
+	}
+	amounts := []billingResourceAmountRow{
+		{
+			Resource:  resourceStorage,
+			AppType:   int32(appTypeAPP),
+			Amount:    int64(10),
+			Owner:     "alice",
+			Namespace: "ns-alice",
+		},
+		{
+			Resource:  resourceStorage,
+			AppType:   int32(appTypeDatabaseBackup),
+			Amount:    int64(20),
+			Owner:     "alice",
+			Namespace: "ns-alice",
+		},
+		{
+			Resource:  resourceStorage,
+			AppType:   int32(appTypeObjectStorage),
+			Amount:    int64(30),
+			Owner:     "bob",
+			Namespace: "ns-bob",
+		},
+	}
+
+	snapshot := aggregateBillingRows(rows, amounts, defaultProperties, true, windowStart, windowEnd)
+
+	unit := defaultProperties[resourceStorage].Unit
+	for name, want := range map[string]float64{
+		resourcePVCStorage:                      1000,
+		resourceDatabaseBackup:                  2000,
+		resourceObjectStorage:                   3000,
+		defaultProperties[resourceStorage].Name: 6000,
+	} {
+		if got := snapshot.Resources[resourceKey{Resource: name, Unit: unit}].Used; got != want {
+			t.Fatalf("resource %s = %v, want %v", name, got, want)
+		}
+	}
+
+	for name, want := range map[string]float64{
+		resourcePVCStorage:                      10,
+		resourceDatabaseBackup:                  20,
+		resourceObjectStorage:                   30,
+		defaultProperties[resourceStorage].Name: 60,
+	} {
+		if got := snapshot.ResourceAmounts[resourceAmountKey{Resource: name}].Amount; got != want {
+			t.Fatalf("resource amount %s = %v, want %v", name, got, want)
+		}
+	}
+}
+
+func TestAggregateBillingRowsKeepsStorageTotalDistinctFromConfiguredCategoryName(t *testing.T) {
+	windowStart := time.Date(2026, time.July, 8, 0, 0, 0, 0, time.UTC)
+	properties := maps.Clone(defaultProperties)
+	properties[resourceStorage] = PropertyInfo{Name: resourcePVCStorage, Unit: "1Mi"}
+	rows := []billingAggregateRow{
+		{Resource: resourceStorage, AppType: appTypeAPP, Used: int64(100)},
+		{Resource: resourceStorage, AppType: appTypeDatabaseBackup, Used: int64(200)},
+		{Resource: resourceStorage, AppType: appTypeObjectStorage, Used: int64(300)},
+	}
+	amounts := []billingResourceAmountRow{
+		{Resource: resourceStorage, AppType: appTypeAPP, Amount: int64(10)},
+		{Resource: resourceStorage, AppType: appTypeDatabaseBackup, Amount: int64(20)},
+		{Resource: resourceStorage, AppType: appTypeObjectStorage, Amount: int64(30)},
+	}
+
+	snapshot := aggregateBillingRows(
+		rows,
+		amounts,
+		properties,
+		false,
+		windowStart,
+		windowStart.Add(time.Hour),
+	)
+	wantUsage := map[string]float64{
+		resourcePVCStorage:     100,
+		resourceDatabaseBackup: 200,
+		resourceObjectStorage:  300,
+		resourceStorageTotal:   600,
+	}
+	if len(snapshot.Resources) != len(wantUsage) {
+		t.Fatalf("resource count = %d, want %d", len(snapshot.Resources), len(wantUsage))
+	}
+	for name, want := range wantUsage {
+		if got := snapshot.Resources[resourceKey{Resource: name, Unit: "1Mi"}].Used; got != want {
+			t.Fatalf("resource %s = %v, want %v", name, got, want)
+		}
+	}
+
+	wantAmounts := map[string]float64{
+		resourcePVCStorage:     10,
+		resourceDatabaseBackup: 20,
+		resourceObjectStorage:  30,
+		resourceStorageTotal:   60,
+	}
+	if len(snapshot.ResourceAmounts) != len(wantAmounts) {
+		t.Fatalf("resource amount count = %d, want %d", len(snapshot.ResourceAmounts), len(wantAmounts))
+	}
+	for name, want := range wantAmounts {
+		if got := snapshot.ResourceAmounts[resourceAmountKey{Resource: name}].Amount; got != want {
+			t.Fatalf("resource amount %s = %v, want %v", name, got, want)
+		}
+	}
+}
+
 func TestBillingAggregatePipelinesDoNotUseFacet(t *testing.T) {
 	windowStart := time.Date(2026, time.July, 8, 0, 0, 0, 0, time.UTC)
 	windowEnd := windowStart.Add(time.Hour)
 	pipelines := map[string]mongo.Pipeline{
+		"LLM token amount with owner metrics": billingLLMTokenAmountPipeline(
+			windowStart,
+			windowEnd,
+			true,
+		),
+		"LLM token amount cluster metrics": billingLLMTokenAmountPipeline(
+			windowStart,
+			windowEnd,
+			false,
+		),
 		"resource usage with owner metrics": billingAggregatePipeline(
 			windowStart,
 			windowEnd,
@@ -336,6 +476,46 @@ func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
 		}),
 		1000,
 	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_resource_usage",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": "pvc_storage",
+			"unit":     "1Mi",
+		}),
+		1000,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_resource_usage",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": "database_backup",
+			"unit":     "1Mi",
+		}),
+		3000,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_resource_usage",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": "object_storage",
+			"unit":     "1Mi",
+		}),
+		2000,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_resource_usage",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": "storage",
+			"unit":     "1Mi",
+		}),
+		6000,
+	)
 
 	assertGaugeValue(
 		t,
@@ -433,6 +613,51 @@ func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
 	assertGaugeValue(
 		t,
 		metrics,
+		"test_billing_resource_amount",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": "pvc_storage",
+		}),
+		10,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_resource_amount",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": "database_backup",
+		}),
+		30,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_resource_amount",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": "object_storage",
+		}),
+		22,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_resource_amount",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": "storage",
+		}),
+		62,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_resource_amount",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": resourceLLMToken,
+		}),
+		123,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
 		"test_billing_owner_resource_amount",
 		mergeLabels(windowLabels, map[string]string{
 			"owner":     "alice",
@@ -441,6 +666,20 @@ func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
 		}),
 		35,
 	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_owner_resource_amount",
+		mergeLabels(windowLabels, map[string]string{
+			"owner":     "dave",
+			"namespace": "ns-dave",
+			"resource":  resourceLLMToken,
+		}),
+		123,
+	)
+	assertMetricAbsentWithLabels(t, metrics, "test_billing_resource_usage", map[string]string{
+		"resource": resourceLLMToken,
+	})
 	assertGaugeValue(
 		t,
 		metrics,
@@ -556,6 +795,15 @@ func TestPollSkipsOwnerMetricsWhenDisabled(t *testing.T) {
 		}),
 		50,
 	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_resource_amount",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": resourceLLMToken,
+		}),
+		123,
+	)
 	assertMetricAbsent(t, metrics, "test_billing_owner_resource_usage")
 	assertMetricAbsent(t, metrics, "test_billing_amount")
 	assertMetricAbsent(t, metrics, "test_billing_owner_amount")
@@ -633,6 +881,7 @@ func seedBillingMongo(
 			"app_costs": []any{
 				bson.M{
 					"name": "launchpad-api",
+					"type": appTypeAPP,
 					"used": bson.M{
 						resourceCPU:    int64(1000),
 						resourceMemory: int64(2048),
@@ -646,6 +895,7 @@ func seedBillingMongo(
 				},
 				bson.M{
 					"name": "launchpad-worker",
+					"type": appTypeAPP,
 					"used": bson.M{
 						resourceCPU:       int64(250),
 						resourceNodePorts: int64(1000),
@@ -654,6 +904,12 @@ func seedBillingMongo(
 						resourceCPU:       int64(25),
 						resourceNodePorts: int64(40),
 					},
+				},
+				bson.M{
+					"name":        "pvc",
+					"type":        appTypeAPP,
+					"used":        bson.M{resourceStorage: int64(1000)},
+					"used_amount": bson.M{resourceStorage: int64(10)},
 				},
 				bson.M{
 					"name": "empty-usage",
@@ -671,16 +927,46 @@ func seedBillingMongo(
 			"app_costs": []any{
 				bson.M{
 					"name": "object-storage",
+					"type": appTypeObjectStorage,
 					"used": bson.M{
 						resourceCPU:     int64(500),
 						resourceNetwork: int64(4096),
+						resourceStorage: int64(2000),
 					},
 					"used_amount": bson.M{
 						resourceCPU:     int64(15),
 						resourceNetwork: int64(35),
+						resourceStorage: int64(22),
 					},
 				},
 			},
+		},
+		bson.M{
+			"time":      windowEnd,
+			"type":      billingTypeConsumption,
+			"owner":     "carol",
+			"namespace": "ns-carol",
+			"amount":    int64(33),
+			"app_type":  appTypeDB,
+			"status":    billingStatusSettled,
+			"app_costs": []any{
+				bson.M{
+					"name":        "database-backup",
+					"type":        9,
+					"used":        bson.M{resourceStorage: int64(3000)},
+					"used_amount": bson.M{resourceStorage: int64(30)},
+				},
+			},
+		},
+		bson.M{
+			"time":      windowEnd,
+			"type":      billingTypeSubConsumption,
+			"owner":     "dave",
+			"namespace": "ns-dave",
+			"app_type":  appTypeLLMToken,
+			"app_name":  "aiproxy",
+			"amount":    int64(123),
+			"status":    billingStatusSettled,
 		},
 		bson.M{
 			"time":      windowStart,
@@ -727,7 +1013,7 @@ type collectedMetric struct {
 func collectBillingMetrics(t *testing.T, c *Collector) []collectedMetric {
 	t.Helper()
 
-	ch := make(chan prometheus.Metric, 32)
+	ch := make(chan prometheus.Metric, 128)
 	c.collect(ch)
 	close(ch)
 
@@ -803,6 +1089,21 @@ func assertMetricAbsent(t *testing.T, metrics []collectedMetric, name string) {
 	for _, metric := range metrics {
 		if metric.name == name {
 			t.Fatalf("unexpected metric %s", name)
+		}
+	}
+}
+
+func assertMetricAbsentWithLabels(
+	t *testing.T,
+	metrics []collectedMetric,
+	name string,
+	labels map[string]string,
+) {
+	t.Helper()
+
+	for _, metric := range metrics {
+		if metric.name == name && labelsContained(metric.labels, labels) {
+			t.Fatalf("unexpected metric %s with labels %v", name, labels)
 		}
 	}
 }

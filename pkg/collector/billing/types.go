@@ -15,13 +15,24 @@ const (
 )
 
 const (
-	billingTypeConsumption = 0
+	resourceStorageTotal   = "storage"
+	resourcePVCStorage     = "pvc_storage"
+	resourceDatabaseBackup = "database_backup"
+	resourceObjectStorage  = "object_storage"
+	resourceLLMToken       = "llm_tokens"
 )
 
 const (
-	appTypeDB            = 1
-	appTypeAPP           = 2
-	appTypeObjectStorage = 6
+	billingTypeConsumption    = 0
+	billingTypeSubConsumption = 1
+)
+
+const (
+	appTypeDB             = 1
+	appTypeAPP            = 2
+	appTypeObjectStorage  = 6
+	appTypeDatabaseBackup = 9
+	appTypeLLMToken       = 11
 )
 
 const (
@@ -32,7 +43,8 @@ const (
 var defaultProperties = map[string]PropertyInfo{
 	resourceCPU:       {Name: "cpu", Unit: "1m"},
 	resourceMemory:    {Name: "memory", Unit: "1Mi"},
-	resourceStorage:   {Name: "storage", Unit: "1Mi"},
+	resourceStorage:   {Name: resourceStorageTotal, Unit: "1Mi"},
+	resourceLLMToken:  {Name: resourceLLMToken, Unit: "1"},
 	resourceNetwork:   {Name: "network", Unit: "1Mi"},
 	resourceNodePorts: {Name: "services.nodeports", Unit: "1"},
 }
@@ -68,6 +80,7 @@ type billingAggregateRow struct {
 	Owner     string `bson:"owner"`
 	Namespace string `bson:"namespace"`
 	Resource  string `bson:"resource"`
+	AppType   any    `bson:"app_type"`
 	Used      any    `bson:"used"`
 }
 
@@ -75,12 +88,14 @@ type billingResourceAmountRow struct {
 	Owner     string `bson:"owner"`
 	Namespace string `bson:"namespace"`
 	Resource  string `bson:"resource"`
+	AppType   any    `bson:"app_type"`
 	Amount    any    `bson:"amount"`
 }
 
 type billingAggregateResult struct {
 	Resources       []billingAggregateRow      `bson:"resources"`
 	ResourceAmounts []billingResourceAmountRow `bson:"resource_amounts"`
+	LLMTokenAmounts []billingResourceAmountRow `bson:"llm_token_amounts"`
 }
 
 type BillingSnapshot struct {
