@@ -266,6 +266,7 @@ func TestAggregateBillingRowsKeepsStorageTotalDistinctFromConfiguredCategoryName
 		windowStart,
 		windowStart.Add(time.Hour),
 	)
+
 	wantUsage := map[string]float64{
 		resourcePVCStorage:     100,
 		resourceDatabaseBackup: 200,
@@ -275,6 +276,7 @@ func TestAggregateBillingRowsKeepsStorageTotalDistinctFromConfiguredCategoryName
 	if len(snapshot.Resources) != len(wantUsage) {
 		t.Fatalf("resource count = %d, want %d", len(snapshot.Resources), len(wantUsage))
 	}
+
 	for name, want := range wantUsage {
 		if got := snapshot.Resources[resourceKey{Resource: name, Unit: "1Mi"}].Used; got != want {
 			t.Fatalf("resource %s = %v, want %v", name, got, want)
@@ -288,8 +290,13 @@ func TestAggregateBillingRowsKeepsStorageTotalDistinctFromConfiguredCategoryName
 		resourceStorageTotal:   60,
 	}
 	if len(snapshot.ResourceAmounts) != len(wantAmounts) {
-		t.Fatalf("resource amount count = %d, want %d", len(snapshot.ResourceAmounts), len(wantAmounts))
+		t.Fatalf(
+			"resource amount count = %d, want %d",
+			len(snapshot.ResourceAmounts),
+			len(wantAmounts),
+		)
 	}
+
 	for name, want := range wantAmounts {
 		if got := snapshot.ResourceAmounts[resourceAmountKey{Resource: name}].Amount; got != want {
 			t.Fatalf("resource amount %s = %v, want %v", name, got, want)
