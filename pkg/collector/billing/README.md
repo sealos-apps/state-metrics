@@ -234,7 +234,7 @@ sealos_billing_resource_usage{window_start="1760000000",window_end="1760003600",
 Equivalent average cores:
 
 ```promql
-sum(sealos_billing_resource_usage{resource="cpu", unit="1m"}) / 1000
+max(sealos_billing_resource_usage{resource="cpu", unit="1m"}) / 1000
 ```
 
 ## Resource Metadata
@@ -660,57 +660,62 @@ db.getSiblingDB("sealos-resources").billing.explain("executionStats").aggregate(
 Total billing amount for the previous complete hourly billing window:
 
 ```promql
-sum(sealos_billing_resource_amount) / 1000000
+sum(max by (resource) (sealos_billing_resource_amount)) / 1000000
 ```
 
 Billing amount by resource:
 
 ```promql
-sum by (resource) (sealos_billing_resource_amount) / 1000000
+max by (resource) (sealos_billing_resource_amount) / 1000000
 ```
 
 Billing amount by owner and resource. Requires `enableOwnerMetrics=true`:
 
 ```promql
-sum by (owner, resource) (sealos_billing_owner_resource_amount) / 1000000
+sum by (owner, resource) (max by (owner, namespace, resource) (sealos_billing_owner_resource_amount)) / 1000000
 ```
 
 ## PromQL Examples
 
+window_start and window_end identify each hourly snapshot. Collapse those
+labels with max by (...) before aggregating distinct resources or namespaces.
+This also prevents duplicate exporter series during leader transitions from
+being added to the billing total.
+
 Total average billed CPU cores for the previous complete hourly billing window:
 
 ```promql
-sum(sealos_billing_resource_usage{resource="cpu", unit="1m"}) / 1000
+max(sealos_billing_resource_usage{resource="cpu", unit="1m"}) / 1000
 ```
 
 Average billed CPU cores by owner:
 
 ```promql
-sum by (owner) (sealos_billing_owner_resource_usage{resource="cpu", unit="1m"}) / 1000
+sum by (owner) (max by (owner, namespace) (sealos_billing_owner_resource_usage{resource="cpu", unit="1m"})) / 1000
 ```
 
 Average billed CPU cores by owner and namespace:
 
 ```promql
-sum by (owner, namespace) (sealos_billing_owner_resource_usage{resource="cpu", unit="1m"}) / 1000
+max by (owner, namespace) (sealos_billing_owner_resource_usage{resource="cpu", unit="1m"}) / 1000
 ```
 
 Average billed memory MiB by owner:
 
 ```promql
-sum by (owner) (sealos_billing_owner_resource_usage{resource="memory", unit="1Mi"})
+sum by (owner) (max by (owner, namespace) (sealos_billing_owner_resource_usage{resource="memory", unit="1Mi"}))
 ```
 
 Average billed storage MiB across the cluster:
 
 ```promql
-sum(sealos_billing_resource_usage{resource="storage", unit="1Mi"})
+max(sealos_billing_resource_usage{resource="storage", unit="1Mi"})
 ```
 
 Storage usage by billing category:
 
 ```promql
-sum(sealos_billing_resource_usage{resource=~"pvc_storage|database_backup|object_storage", unit="1Mi"})
+max by (resource) (sealos_billing_resource_usage{resource=~"pvc_storage|database_backup|object_storage", unit="1Mi"})
 ```
 
 The `storage` series is computed from the three category series during the
@@ -721,19 +726,19 @@ This calculation does not issue a separate MongoDB query.
 Storage amount by billing category:
 
 ```promql
-sum by (resource) (sealos_billing_resource_amount{resource=~"pvc_storage|database_backup|object_storage"}) / 1000000
+max by (resource) (sealos_billing_resource_amount{resource=~"pvc_storage|database_backup|object_storage"}) / 1000000
 ```
 
 Billed network MiB in the previous complete hourly billing window:
 
 ```promql
-sum(sealos_billing_resource_usage{resource="network", unit="1Mi"})
+max(sealos_billing_resource_usage{resource="network", unit="1Mi"})
 ```
 
 Namespace billed CPU cores:
 
 ```promql
-sum by (namespace, owner) (sealos_billing_owner_resource_usage{resource="cpu", unit="1m"}) / 1000
+max by (namespace, owner) (sealos_billing_owner_resource_usage{resource="cpu", unit="1m"}) / 1000
 ```
 
 Collector freshness:

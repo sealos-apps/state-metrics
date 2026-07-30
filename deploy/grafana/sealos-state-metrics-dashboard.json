@@ -4810,7 +4810,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(sealos_billing_resource_usage{resource=\"cpu\",unit=\"1m\"}) / 1000",
+          "expr": "max(sealos_billing_resource_usage{resource=\"cpu\",unit=\"1m\"}) / 1000",
           "refId": "A"
         }
       ],
@@ -4873,7 +4873,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(sealos_billing_resource_usage{resource=\"memory\",unit=\"1Mi\"}) / 1024",
+          "expr": "max(sealos_billing_resource_usage{resource=\"memory\",unit=\"1Mi\"}) / 1024",
           "refId": "A"
         }
       ],
@@ -4936,7 +4936,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(sealos_billing_resource_usage{resource=\"storage\",unit=\"1Mi\"}) / 1024",
+          "expr": "max(sealos_billing_resource_usage{resource=\"storage\",unit=\"1Mi\"}) / 1024",
           "refId": "A"
         }
       ],
@@ -4999,7 +4999,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(sealos_billing_resource_usage{resource=\"network\",unit=\"1Mi\"}) / 1024",
+          "expr": "max(sealos_billing_resource_usage{resource=\"network\",unit=\"1Mi\"}) / 1024",
           "refId": "A"
         }
       ],
@@ -5062,7 +5062,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(sealos_billing_resource_usage{resource=\"services.nodeports\",unit=\"1\"}) / 1000",
+          "expr": "max(sealos_billing_resource_usage{resource=\"services.nodeports\",unit=\"1\"}) / 1000",
           "refId": "A"
         }
       ],
@@ -5125,7 +5125,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(sealos_billing_resource_amount{resource!=\"storage\"}) / 1000000",
+          "expr": "sum(max by (resource) (sealos_billing_resource_amount{resource!=\"storage\"})) / 1000000",
           "refId": "A"
         }
       ],
@@ -5252,7 +5252,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (resource) (sealos_billing_resource_usage{resource=~\"pvc_storage|database_backup|object_storage\",unit=\"1Mi\"}) / 1024",
+          "expr": "max by (resource) (sealos_billing_resource_usage{resource=~\"pvc_storage|database_backup|object_storage\",unit=\"1Mi\"}) / 1024",
           "legendFormat": "{{resource}}",
           "refId": "A"
         }
@@ -5317,7 +5317,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sealos_billing_resource_amount{resource=\"llm_tokens\"}) / 1000000",
+          "expr": "max(sealos_billing_resource_amount{resource=\"llm_tokens\"}) / 1000000",
           "refId": "A"
         }
       ],
@@ -5329,7 +5329,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "上一完整计费小时的集群平均 CPU 核心数趋势。",
+      "description": "上一完整计费小时的集群平均 CPU 核心数趋势。数据按小时快照展示。",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -5352,14 +5352,14 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "linear",
+            "lineInterpolation": "stepAfter",
             "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -5414,7 +5414,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sealos_billing_resource_usage{resource=\"cpu\",unit=\"1m\"}) / 1000",
+          "expr": "max(sealos_billing_resource_usage{resource=\"cpu\",unit=\"1m\"}) / 1000",
           "legendFormat": "CPU cores",
           "range": true,
           "refId": "A"
@@ -5428,7 +5428,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "上一完整计费小时的集群平均内存 GiB 趋势。",
+      "description": "上一完整计费小时的集群平均内存 GiB 趋势。数据按小时快照展示。",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -5451,14 +5451,14 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "linear",
+            "lineInterpolation": "stepAfter",
             "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -5513,7 +5513,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sealos_billing_resource_usage{resource=\"memory\",unit=\"1Mi\"}) / 1024",
+          "expr": "max(sealos_billing_resource_usage{resource=\"memory\",unit=\"1Mi\"}) / 1024",
           "legendFormat": "内存 GiB",
           "range": true,
           "refId": "A"
@@ -5527,7 +5527,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "上一完整计费小时的集群平均存储 GiB 趋势。",
+      "description": "上一完整计费小时的集群平均存储 GiB 趋势。数据按小时快照展示。",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -5550,14 +5550,14 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "linear",
+            "lineInterpolation": "stepAfter",
             "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -5612,7 +5612,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sealos_billing_resource_usage{resource=\"storage\",unit=\"1Mi\"}) / 1024",
+          "expr": "max(sealos_billing_resource_usage{resource=\"storage\",unit=\"1Mi\"}) / 1024",
           "legendFormat": "存储 GiB",
           "range": true,
           "refId": "A"
@@ -5626,7 +5626,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "上一完整计费小时的网络流量 GiB/h 趋势。",
+      "description": "上一完整计费小时的网络流量 GiB/h 趋势。数据按小时快照展示。",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -5649,14 +5649,14 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "linear",
+            "lineInterpolation": "stepAfter",
             "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -5711,7 +5711,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sealos_billing_resource_usage{resource=\"network\",unit=\"1Mi\"}) / 1024",
+          "expr": "max(sealos_billing_resource_usage{resource=\"network\",unit=\"1Mi\"}) / 1024",
           "legendFormat": "网络 GiB/h",
           "range": true,
           "refId": "A"
@@ -5725,7 +5725,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "上一完整计费小时的集群平均 NodePort 计费用量趋势。Sealos 原始计量中 1 个 NodePort = 1000 unit。",
+      "description": "上一完整计费小时的集群平均 NodePort 计费用量趋势。数据按小时快照展示。Sealos 原始计量中 1 个 NodePort = 1000 unit。",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -5748,14 +5748,14 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "linear",
+            "lineInterpolation": "stepAfter",
             "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -5810,7 +5810,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sealos_billing_resource_usage{resource=\"services.nodeports\",unit=\"1\"}) / 1000",
+          "expr": "max(sealos_billing_resource_usage{resource=\"services.nodeports\",unit=\"1\"}) / 1000",
           "legendFormat": "NodePort",
           "range": true,
           "refId": "A"
@@ -5824,7 +5824,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "上一完整计费小时的资源级费用趋势。Sealos 原始金额单位为 1/1000000，查询中除以 1000000；面板不带币种。",
+      "description": "上一完整计费小时的资源级费用趋势。数据按小时快照展示。Sealos 原始金额单位为 1/1000000，查询中除以 1000000；面板不带币种。",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -5847,14 +5847,14 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "linear",
+            "lineInterpolation": "stepAfter",
             "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -5909,7 +5909,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (resource) (sealos_billing_resource_amount{resource!=\"storage\"}) / 1000000",
+          "expr": "max by (resource) (sealos_billing_resource_amount{resource!=\"storage\"}) / 1000000",
           "legendFormat": "{{resource}}",
           "range": true,
           "refId": "A"
@@ -5923,7 +5923,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "上一完整计费小时的 PVC、数据库备份和对象存储 GiB 趋势。",
+      "description": "上一完整计费小时的 PVC、数据库备份和对象存储 GiB 趋势。数据按小时快照展示。",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -5945,14 +5945,14 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "linear",
+            "lineInterpolation": "stepAfter",
             "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -6007,7 +6007,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (resource) (sealos_billing_resource_usage{resource=~\"pvc_storage|database_backup|object_storage\",unit=\"1Mi\"}) / 1024",
+          "expr": "max by (resource) (sealos_billing_resource_usage{resource=~\"pvc_storage|database_backup|object_storage\",unit=\"1Mi\"}) / 1024",
           "legendFormat": "{{resource}}",
           "range": true,
           "refId": "A"
@@ -6021,7 +6021,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "上一完整计费小时的 AIProxy/LLM Token 费用趋势。原始金额单位为 1/1000000。",
+      "description": "上一完整计费小时的 AIProxy/LLM Token 费用趋势。数据按小时快照展示。原始金额单位为 1/1000000。",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -6044,14 +6044,14 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "linear",
+            "lineInterpolation": "stepAfter",
             "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
             },
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": false,
             "stacking": {
               "group": "A",
               "mode": "none"
@@ -6106,7 +6106,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(sealos_billing_resource_amount{resource=\"llm_tokens\"}) / 1000000",
+          "expr": "max(sealos_billing_resource_amount{resource=\"llm_tokens\"}) / 1000000",
           "legendFormat": "LLM Token 费用",
           "range": true,
           "refId": "A"
