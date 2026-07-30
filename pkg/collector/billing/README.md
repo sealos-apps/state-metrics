@@ -51,7 +51,7 @@ The raw Sealos data has several important characteristics:
 | Memory and storage unit | Memory and storage normally use `1Mi`. |
 | Network unit | Network normally uses `1Mi`; Sealos stores hourly sent traffic for billing. |
 | Price fields | `billing.amount` is the record total. `app_costs[].amount` is the app item total. `app_costs[].used_amount` is the resource-level amount map. Sealos stores raw amount values in 1/1000000 base units. The collector emits raw amount values without currency labels. |
-| LLM token billing | `type=1`, `app_type=11` records store AIProxy/LLM token charges in the top-level `amount`; the collector exposes them as `resource="llm_tokens"` amount metrics. |
+| LLM token billing | Hourly archived `type=0`, `app_type=11` records store AIProxy/LLM token charges in the top-level `amount`; their timestamp is the archived hour start. The collector exposes them as `resource="llm_tokens"` amount metrics. |
 | Aggregation type | The `properties.price_type` controls how billing was generated: `AVG`, `SUM`, or `DIF`. The finalized `billing.app_costs[].used` already reflects that aggregation. |
 | Ownership | `owner` is the Sealos user owner. `namespace` is the charged namespace. |
 | App grouping | `app_type` identifies broad Sealos app categories; `app_costs[].type` and `app_costs[].name` identify entries inside the billing record. |
@@ -335,7 +335,8 @@ sealos_billing_owner_resource_usage{window_start="1760000000",window_end="176000
 
 Raw billing amount grouped by resource across all owners and namespaces. Values
 come from `billing.app_costs[].used_amount`; AIProxy/LLM token charges come from
-the top-level `billing.amount` on `type=1`, `app_type=11` records.
+the top-level `billing.amount` on hourly archived `type=0`, `app_type=11`
+records.
 
 Type: Gauge
 

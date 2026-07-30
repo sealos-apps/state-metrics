@@ -5125,7 +5125,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(sealos_billing_resource_amount) / 1000000",
+          "expr": "sum(sealos_billing_resource_amount{resource!=\"storage\"}) / 1000000",
           "refId": "A"
         }
       ],
@@ -5200,6 +5200,135 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "上一完整计费小时的 PVC、数据库备份和对象存储用量。原始单位为 MiB，查询中除以 1024。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "gbytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 18,
+        "x": 0,
+        "y": 82
+      },
+      "id": 1118,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.3.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (resource) (sealos_billing_resource_usage{resource=~\"pvc_storage|database_backup|object_storage\",unit=\"1Mi\"}) / 1024",
+          "legendFormat": "{{resource}}",
+          "refId": "A"
+        }
+      ],
+      "title": "存储分类 GiB",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "上一完整计费小时的 AIProxy/LLM Token 费用。该序列来自 type=1、app_type=11 账单的 amount，原始金额单位为 1/1000000。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 82
+      },
+      "id": 1119,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.3.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(sealos_billing_resource_amount{resource=\"llm_tokens\"}) / 1000000",
+          "refId": "A"
+        }
+      ],
+      "title": "LLM Token 费用",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "description": "上一完整计费小时的集群平均 CPU 核心数趋势。",
       "fieldConfig": {
         "defaults": {
@@ -5258,7 +5387,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 82
+        "y": 86
       },
       "id": 1107,
       "options": {
@@ -5357,7 +5486,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 82
+        "y": 86
       },
       "id": 1108,
       "options": {
@@ -5456,7 +5585,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 82
+        "y": 86
       },
       "id": 1112,
       "options": {
@@ -5555,7 +5684,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 90
+        "y": 94
       },
       "id": 1113,
       "options": {
@@ -5654,7 +5783,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 90
+        "y": 94
       },
       "id": 1114,
       "options": {
@@ -5753,7 +5882,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 90
+        "y": 94
       },
       "id": 1117,
       "options": {
@@ -5780,13 +5909,210 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (resource) (sealos_billing_resource_amount) / 1000000",
+          "expr": "sum by (resource) (sealos_billing_resource_amount{resource!=\"storage\"}) / 1000000",
           "legendFormat": "{{resource}}",
           "range": true,
           "refId": "A"
         }
       ],
       "title": "费用趋势",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "上一完整计费小时的 PVC、数据库备份和对象存储 GiB 趋势。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "barWidthFactor": 0.6
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "gbytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 0,
+        "y": 102
+      },
+      "id": 1120,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "pluginVersion": "11.3.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (resource) (sealos_billing_resource_usage{resource=~\"pvc_storage|database_backup|object_storage\",unit=\"1Mi\"}) / 1024",
+          "legendFormat": "{{resource}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "存储分类趋势 (GiB)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "上一完整计费小时的 AIProxy/LLM Token 费用趋势。原始金额单位为 1/1000000。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "purple",
+            "mode": "fixed"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "barWidthFactor": 0.6
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 102
+      },
+      "id": 1121,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "11.3.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(sealos_billing_resource_amount{resource=\"llm_tokens\"}) / 1000000",
+          "legendFormat": "LLM Token 费用",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "LLM Token 费用趋势",
       "type": "timeseries"
     }
   ],
@@ -5975,14 +6301,14 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "definition": "label_values(sealos_billing_resource_usage, resource)",
+        "definition": "label_values({__name__=~\"sealos_billing_resource_(usage|amount)\"}, resource)",
         "includeAll": true,
         "label": "计费资源",
         "multi": true,
         "name": "billing_resource",
         "options": [],
         "query": {
-          "query": "label_values(sealos_billing_resource_usage, resource)",
+          "query": "label_values({__name__=~\"sealos_billing_resource_(usage|amount)\"}, resource)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
@@ -6010,6 +6336,6 @@
   "timezone": "",
   "title": "Sealos State Metrics - 完整监控面板",
   "uid": "sealos-state-metrics",
-  "version": 13,
+  "version": 14,
   "weekStart": ""
 }

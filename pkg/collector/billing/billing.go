@@ -347,11 +347,11 @@ func billingLLMTokenAmountPipeline(
 		bson.D{{
 			Key: "$match",
 			Value: bson.D{
-				{Key: "type", Value: billingTypeSubConsumption},
+				{Key: "type", Value: billingTypeConsumption},
 				{Key: "app_type", Value: appTypeLLMToken},
 				{Key: "time", Value: bson.D{
-					{Key: "$gt", Value: windowStart},
-					{Key: "$lte", Value: windowEnd},
+					{Key: "$gte", Value: windowStart},
+					{Key: "$lt", Value: windowEnd},
 				}},
 			},
 		}},

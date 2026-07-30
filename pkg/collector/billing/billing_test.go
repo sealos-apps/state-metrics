@@ -348,6 +348,38 @@ func TestBillingAggregatePipelinesDoNotUseFacet(t *testing.T) {
 	}
 }
 
+func TestBillingLLMTokenAmountPipelineMatchesArchivedBillingContract(t *testing.T) {
+	windowStart := time.Date(2026, time.July, 8, 9, 0, 0, 0, time.UTC)
+	windowEnd := windowStart.Add(time.Hour)
+	pipeline := billingLLMTokenAmountPipeline(windowStart, windowEnd, false)
+
+	match, ok := pipeline[0][0].Value.(bson.D)
+	if !ok {
+		t.Fatalf("$match value type = %T, want bson.D", pipeline[0][0].Value)
+	}
+
+	if got := bsonDocumentValue(match, "type"); got != billingTypeConsumption {
+		t.Fatalf("billing type = %v, want %d", got, billingTypeConsumption)
+	}
+
+	if got := bsonDocumentValue(match, "app_type"); got != appTypeLLMToken {
+		t.Fatalf("app type = %v, want %d", got, appTypeLLMToken)
+	}
+
+	timeRange, ok := bsonDocumentValue(match, "time").(bson.D)
+	if !ok {
+		t.Fatalf("time range type = %T, want bson.D", bsonDocumentValue(match, "time"))
+	}
+
+	if got, ok := bsonDocumentValue(timeRange, "$gte").(time.Time); !ok || !got.Equal(windowStart) {
+		t.Fatalf("time $gte = %v, want %v", got, windowStart)
+	}
+
+	if got, ok := bsonDocumentValue(timeRange, "$lt").(time.Time); !ok || !got.Equal(windowEnd) {
+		t.Fatalf("time $lt = %v, want %v", got, windowEnd)
+	}
+}
+
 func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
 	testcontainers.SkipIfProviderIsNotHealthy(t)
 
@@ -959,13 +991,33 @@ func seedBillingMongo(
 			},
 		},
 		bson.M{
-			"time":      windowEnd,
-			"type":      billingTypeSubConsumption,
+			"time":      windowStart,
+			"type":      billingTypeConsumption,
 			"owner":     "dave",
 			"namespace": "ns-dave",
 			"app_type":  appTypeLLMToken,
 			"app_name":  "aiproxy",
 			"amount":    int64(123),
+			"status":    billingStatusSettled,
+		},
+		bson.M{
+			"time":      windowStart,
+			"type":      1,
+			"owner":     "legacy-llm-type",
+			"namespace": "ns-legacy-llm-type",
+			"app_type":  appTypeLLMToken,
+			"app_name":  "aiproxy",
+			"amount":    int64(999),
+			"status":    billingStatusSettled,
+		},
+		bson.M{
+			"time":      windowEnd,
+			"type":      billingTypeConsumption,
+			"owner":     "next-hour-llm",
+			"namespace": "ns-next-hour-llm",
+			"app_type":  appTypeLLMToken,
+			"app_name":  "aiproxy",
+			"amount":    int64(999),
 			"status":    billingStatusSettled,
 		},
 		bson.M{
@@ -1170,4 +1222,14 @@ func pipelineHasStage(pipeline mongo.Pipeline, stageName string) bool {
 	}
 
 	return false
+}
+
+func bsonDocumentValue(doc bson.D, key string) any {
+	for _, element := range doc {
+		if element.Key == key {
+			return element.Value
+		}
+	}
+
+	return nil
 }

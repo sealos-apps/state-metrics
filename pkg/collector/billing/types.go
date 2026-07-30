@@ -23,8 +23,7 @@ const (
 )
 
 const (
-	billingTypeConsumption    = 0
-	billingTypeSubConsumption = 1
+	billingTypeConsumption = 0
 )
 
 const (
