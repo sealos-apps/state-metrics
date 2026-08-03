@@ -5125,7 +5125,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(max by (resource) (sealos_billing_resource_amount{resource!=\"storage\"})) / 1000000",
+          "expr": "sum(max by (resource) (sealos_billing_resource_amount{resource=~\"cpu|memory|pvc_storage|database_backup|object_storage|workload_network|object_storage_network|services.nodeports|llm_tokens|cvm\"})) / 1000000",
           "refId": "A"
         }
       ],
@@ -5222,7 +5222,7 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 18,
+        "w": 8,
         "x": 0,
         "y": 82
       },
@@ -5265,7 +5265,133 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "上一完整计费小时的 AIProxy/LLM Token 费用。该序列来自 type=1、app_type=11 账单的 amount，原始金额单位为 1/1000000。",
+      "description": "上一完整计费小时的工作负载网络流量。原始单位为 MiB，查询中除以 1024。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "gbytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 82
+      },
+      "id": 1122,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.3.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "max(sealos_billing_resource_usage{resource=\"workload_network\",unit=\"1Mi\"}) / 1024",
+          "refId": "A"
+        }
+      ],
+      "title": "工作负载网络 GiB",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "上一完整计费小时的对象存储网络流量。原始单位为 MiB，查询中除以 1024。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "gbytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 82
+      },
+      "id": 1123,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.3.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "max(sealos_billing_resource_usage{resource=\"object_storage_network\",unit=\"1Mi\"}) / 1024",
+          "refId": "A"
+        }
+      ],
+      "title": "对象存储网络 GiB",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "上一完整计费小时的 AIProxy/LLM Token 费用。该序列来自 type=0、app_type=11 账单的 amount，原始金额单位为 1/1000000。",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -5287,8 +5413,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 18,
+        "w": 4,
+        "x": 16,
         "y": 82
       },
       "id": 1119,
@@ -5322,6 +5448,70 @@
         }
       ],
       "title": "LLM Token 费用",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "上一完整计费小时的 CVM 云主机费用。原始金额单位为 1/1000000，查询中除以 1000000。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 82
+      },
+      "id": 1124,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.3.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "max(sealos_billing_resource_amount{resource=\"cvm\"}) / 1000000",
+          "refId": "A"
+        }
+      ],
+      "title": "CVM 费用",
       "type": "stat"
     },
     {
@@ -5626,7 +5816,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "上一完整计费小时的网络流量 GiB/h 趋势。数据按小时快照展示。",
+      "description": "上一完整计费小时的网络流量趋势，展示总量、工作负载网络和对象存储网络。数据按小时快照展示。",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -5711,13 +5901,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max(sealos_billing_resource_usage{resource=\"network\",unit=\"1Mi\"}) / 1024",
-          "legendFormat": "网络 GiB/h",
+          "expr": "max by (resource) (sealos_billing_resource_usage{resource=~\"network|workload_network|object_storage_network\",unit=\"1Mi\"}) / 1024",
+          "legendFormat": "{{resource}} GiB/h",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "网络流量趋势 (GiB/h)",
+      "title": "网络流量趋势：总量/分类 (GiB/h)",
       "type": "timeseries"
     },
     {
@@ -5824,7 +6014,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "上一完整计费小时的资源级费用趋势。数据按小时快照展示。Sealos 原始金额单位为 1/1000000，查询中除以 1000000；面板不带币种。",
+      "description": "上一完整计费小时的可计费明细费用趋势。网络和存储聚合总量已排除，避免与分类重复；数据按小时快照展示。Sealos 原始金额单位为 1/1000000，查询中除以 1000000；面板不带币种。",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -5909,7 +6099,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max by (resource) (sealos_billing_resource_amount{resource!=\"storage\"}) / 1000000",
+          "expr": "max by (resource) (sealos_billing_resource_amount{resource=~\"cpu|memory|pvc_storage|database_backup|object_storage|workload_network|object_storage_network|services.nodeports|llm_tokens|cvm\"}) / 1000000",
           "legendFormat": "{{resource}}",
           "range": true,
           "refId": "A"
@@ -5978,7 +6168,7 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 16,
+        "w": 12,
         "x": 0,
         "y": 102
       },
@@ -6077,8 +6267,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 8,
-        "x": 16,
+        "w": 6,
+        "x": 12,
         "y": 102
       },
       "id": 1121,
@@ -6113,6 +6303,105 @@
         }
       ],
       "title": "LLM Token 费用趋势",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "上一完整计费小时的 CVM 云主机费用趋势。数据按小时快照展示。原始金额单位为 1/1000000。",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "red",
+            "mode": "fixed"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "barWidthFactor": 0.6
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 102
+      },
+      "id": 1125,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "11.3.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "max(sealos_billing_resource_amount{resource=\"cvm\"}) / 1000000",
+          "legendFormat": "CVM 费用",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "CVM 费用趋势",
       "type": "timeseries"
     }
   ],

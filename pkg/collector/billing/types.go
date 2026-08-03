@@ -15,11 +15,15 @@ const (
 )
 
 const (
-	resourceStorageTotal   = "storage"
-	resourcePVCStorage     = "pvc_storage"
-	resourceDatabaseBackup = "database_backup"
-	resourceObjectStorage  = "object_storage"
-	resourceLLMToken       = "llm_tokens"
+	resourceStorageTotal         = "storage"
+	resourcePVCStorage           = "pvc_storage"
+	resourceDatabaseBackup       = "database_backup"
+	resourceObjectStorage        = "object_storage"
+	resourceNetworkTotal         = "network"
+	resourceWorkloadNetwork      = "workload_network"
+	resourceObjectStorageNetwork = "object_storage_network"
+	resourceLLMToken             = "llm_tokens"
+	resourceCVM                  = "cvm"
 )
 
 const (
@@ -30,6 +34,7 @@ const (
 	appTypeDB             = 1
 	appTypeAPP            = 2
 	appTypeObjectStorage  = 6
+	appTypeCVM            = 7
 	appTypeDatabaseBackup = 9
 	appTypeLLMToken       = 11
 )
@@ -44,7 +49,8 @@ var defaultProperties = map[string]PropertyInfo{
 	resourceMemory:    {Name: "memory", Unit: "1Mi"},
 	resourceStorage:   {Name: resourceStorageTotal, Unit: "1Mi"},
 	resourceLLMToken:  {Name: resourceLLMToken, Unit: "1"},
-	resourceNetwork:   {Name: "network", Unit: "1Mi"},
+	resourceCVM:       {Name: resourceCVM, Unit: "1"},
+	resourceNetwork:   {Name: resourceNetworkTotal, Unit: "1Mi"},
 	resourceNodePorts: {Name: "services.nodeports", Unit: "1"},
 }
 
@@ -95,6 +101,7 @@ type billingAggregateResult struct {
 	Resources       []billingAggregateRow      `bson:"resources"`
 	ResourceAmounts []billingResourceAmountRow `bson:"resource_amounts"`
 	LLMTokenAmounts []billingResourceAmountRow `bson:"llm_token_amounts"`
+	CVMAmounts      []billingResourceAmountRow `bson:"cvm_amounts"`
 }
 
 type BillingSnapshot struct {

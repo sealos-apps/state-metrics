@@ -107,6 +107,7 @@ func TestAggregateBillingDocuments(t *testing.T) {
 			"status":    billingStatusSubscription,
 			"app_costs": []any{
 				bson.M{
+					"type":        appTypeObjectStorage,
 					"used":        bson.M{resourceNetwork: int64(4096)},
 					"used_amount": bson.M{resourceNetwork: int64(40)},
 				},
@@ -144,12 +145,14 @@ func TestAggregateBillingDocuments(t *testing.T) {
 		t.Fatalf("window end = %v, want %v", got, windowEnd)
 	}
 
-	networkKey := resourceKey{
-		Resource: defaultProperties[resourceNetwork].Name,
-		Unit:     defaultProperties[resourceNetwork].Unit,
-	}
-	if got := snapshot.Resources[networkKey].Used; got != 4096 {
-		t.Fatalf("network used = %v, want 4096", got)
+	for resourceName, want := range map[string]float64{
+		resourceObjectStorageNetwork: 4096,
+		resourceNetworkTotal:         4096,
+	} {
+		key := resourceKey{Resource: resourceName, Unit: defaultProperties[resourceNetwork].Unit}
+		if got := snapshot.Resources[key].Used; got != want {
+			t.Fatalf("%s used = %v, want %v", resourceName, got, want)
+		}
 	}
 
 	cpuAmountKey := resourceAmountKey{Resource: defaultProperties[resourceCPU].Name}
@@ -164,6 +167,55 @@ func TestAggregateBillingDocuments(t *testing.T) {
 	}
 	if got := snapshot.OwnerResourceAmounts[ownerCPUAmountKey].Amount; got != 40 {
 		t.Fatalf("owner cpu resource amount = %v, want 40", got)
+	}
+
+	objectNetworkOwnerKey := resourceAmountKey{
+		Resource:  resourceObjectStorageNetwork,
+		Owner:     "bob",
+		Namespace: "ns-bob",
+	}
+	if got := snapshot.OwnerResourceAmounts[objectNetworkOwnerKey].Amount; got != 40 {
+		t.Fatalf("owner object storage network amount = %v, want 40", got)
+	}
+}
+
+func TestAggregateBillingRowsSplitsNetworkAndIncludesCVM(t *testing.T) {
+	windowStart := time.Date(2026, time.July, 8, 0, 0, 0, 0, time.UTC)
+	windowEnd := windowStart.Add(time.Hour)
+	rows := []billingAggregateRow{
+		{Resource: resourceNetwork, AppType: appTypeAPP, Used: int64(1000)},
+		{Resource: resourceNetwork, AppType: appTypeObjectStorage, Used: int64(2000)},
+	}
+	amounts := []billingResourceAmountRow{
+		{Resource: resourceNetwork, AppType: appTypeAPP, Amount: int64(10)},
+		{Resource: resourceNetwork, AppType: appTypeObjectStorage, Amount: int64(20)},
+		{Resource: resourceCVM, AppType: appTypeCVM, Amount: int64(30)},
+	}
+
+	snapshot := aggregateBillingRows(rows, amounts, defaultProperties, false, windowStart, windowEnd)
+
+	for resourceName, want := range map[string]float64{
+		resourceWorkloadNetwork:      1000,
+		resourceObjectStorageNetwork: 2000,
+		resourceNetworkTotal:         3000,
+	} {
+		if got := snapshot.Resources[resourceKey{
+			Resource: resourceName,
+			Unit:     defaultProperties[resourceNetwork].Unit,
+		}].Used; got != want {
+			t.Fatalf("%s usage = %v, want %v", resourceName, got, want)
+		}
+	}
+
+	for resourceName, want := range map[string]float64{
+		resourceWorkloadNetwork:      10,
+		resourceObjectStorageNetwork: 20,
+		resourceNetworkTotal:         30,
+		resourceCVM:                  30,
+	} {
+		if got := snapshot.ResourceAmounts[resourceAmountKey{Resource: resourceName}].Amount; got != want {
+			t.Fatalf("%s amount = %v, want %v", resourceName, got, want)
+		}
 	}
 }
 
@@ -485,12 +537,25 @@ func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
 		}),
 		2048,
 	)
+	assertMetricAbsentWithLabels(t, metrics, "test_billing_resource_usage", map[string]string{
+		"resource": resourceWorkloadNetwork,
+	})
 	assertGaugeValue(
 		t,
 		metrics,
 		"test_billing_resource_usage",
 		mergeLabels(windowLabels, map[string]string{
-			"resource": "network",
+			"resource": resourceObjectStorageNetwork,
+			"unit":     "1Mi",
+		}),
+		4096,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_resource_usage",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": resourceNetworkTotal,
 			"unit":     "1Mi",
 		}),
 		4096,
@@ -587,7 +652,7 @@ func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
 		mergeLabels(windowLabels, map[string]string{
 			"owner":     "bob",
 			"namespace": "ns-bob",
-			"resource":  "network",
+			"resource":  resourceObjectStorageNetwork,
 			"unit":      "1Mi",
 		}),
 		4096,
@@ -622,12 +687,24 @@ func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
 		}),
 		20,
 	)
+	assertMetricAbsentWithLabels(t, metrics, "test_billing_resource_amount", map[string]string{
+		"resource": resourceWorkloadNetwork,
+	})
 	assertGaugeValue(
 		t,
 		metrics,
 		"test_billing_resource_amount",
 		mergeLabels(windowLabels, map[string]string{
-			"resource": "network",
+			"resource": resourceObjectStorageNetwork,
+		}),
+		35,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_resource_amount",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": resourceNetworkTotal,
 		}),
 		35,
 	)
@@ -697,6 +774,15 @@ func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
 	assertGaugeValue(
 		t,
 		metrics,
+		"test_billing_resource_amount",
+		mergeLabels(windowLabels, map[string]string{
+			"resource": resourceCVM,
+		}),
+		77,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
 		"test_billing_owner_resource_amount",
 		mergeLabels(windowLabels, map[string]string{
 			"owner":     "alice",
@@ -716,6 +802,17 @@ func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
 		}),
 		123,
 	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_owner_resource_amount",
+		mergeLabels(windowLabels, map[string]string{
+			"owner":     "erin",
+			"namespace": "ns-erin",
+			"resource":  resourceCVM,
+		}),
+		77,
+	)
 	assertMetricAbsentWithLabels(t, metrics, "test_billing_resource_usage", map[string]string{
 		"resource": resourceLLMToken,
 	})
@@ -726,7 +823,18 @@ func TestPollReadsMongoBillingWindowAndCollectsMetrics(t *testing.T) {
 		mergeLabels(windowLabels, map[string]string{
 			"owner":     "bob",
 			"namespace": "ns-bob",
-			"resource":  "network",
+			"resource":  resourceObjectStorageNetwork,
+		}),
+		35,
+	)
+	assertGaugeValue(
+		t,
+		metrics,
+		"test_billing_owner_resource_amount",
+		mergeLabels(windowLabels, map[string]string{
+			"owner":     "bob",
+			"namespace": "ns-bob",
+			"resource":  resourceNetworkTotal,
 		}),
 		35,
 	)
@@ -1005,6 +1113,16 @@ func seedBillingMongo(
 			"app_type":  appTypeLLMToken,
 			"app_name":  "aiproxy",
 			"amount":    int64(123),
+			"status":    billingStatusSettled,
+		},
+		bson.M{
+			"time":      windowStart,
+			"type":      billingTypeConsumption,
+			"owner":     "erin",
+			"namespace": "ns-erin",
+			"app_type":  appTypeCVM,
+			"app_name":  "cvm-instance",
+			"amount":    int64(77),
 			"status":    billingStatusSettled,
 		},
 		bson.M{

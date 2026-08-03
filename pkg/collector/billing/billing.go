@@ -150,7 +150,10 @@ func (c *Collector) Poll(ctx context.Context) error {
 
 	snapshot := aggregateBillingRows(
 		result.Resources,
-		append(result.ResourceAmounts, result.LLMTokenAmounts...),
+		append(
+			append(result.ResourceAmounts, result.LLMTokenAmounts...),
+			result.CVMAmounts...,
+		),
 		properties,
 		c.config.EnableOwnerMetrics,
 		windowStart,
@@ -167,6 +170,7 @@ func (c *Collector) Poll(ctx context.Context) error {
 		"resource_groups":         len(result.Resources),
 		"resource_amount_groups":  len(result.ResourceAmounts),
 		"llm_token_amount_groups": len(result.LLMTokenAmounts),
+		"cvm_amount_groups":       len(result.CVMAmounts),
 		"window_start":            snapshot.WindowStart,
 		"window_end":              snapshot.WindowEnd,
 		"duration":                time.Since(startedAt),
@@ -185,9 +189,11 @@ func (c *Collector) queryBillingAggregates(
 		resources          []billingAggregateRow
 		resourceAmounts    []billingResourceAmountRow
 		llmTokenAmounts    []billingResourceAmountRow
+		cvmAmounts         []billingResourceAmountRow
 		resourceErr        error
 		resourceAmountsErr error
 		llmTokenAmountsErr error
+		cvmAmountsErr      error
 	)
 
 	wg.Go(func() {
@@ -200,6 +206,14 @@ func (c *Collector) queryBillingAggregates(
 	})
 	wg.Go(func() {
 		llmTokenAmounts, llmTokenAmountsErr = c.queryBillingLLMTokenAmountRows(
+			ctx,
+			windowStart,
+			windowEnd,
+			enableOwnerMetrics,
+		)
+	})
+	wg.Go(func() {
+		cvmAmounts, cvmAmountsErr = c.queryBillingCVMAmountRows(
 			ctx,
 			windowStart,
 			windowEnd,
@@ -229,10 +243,15 @@ func (c *Collector) queryBillingAggregates(
 		return nil, llmTokenAmountsErr
 	}
 
+	if cvmAmountsErr != nil {
+		return nil, cvmAmountsErr
+	}
+
 	return &billingAggregateResult{
 		Resources:       resources,
 		ResourceAmounts: resourceAmounts,
 		LLMTokenAmounts: llmTokenAmounts,
+		CVMAmounts:      cvmAmounts,
 	}, nil
 }
 
@@ -316,16 +335,60 @@ func (c *Collector) queryBillingLLMTokenAmountRows(
 	return rows, nil
 }
 
+func (c *Collector) queryBillingCVMAmountRows(
+	ctx context.Context,
+	windowStart, windowEnd time.Time,
+	enableOwnerMetrics bool,
+) ([]billingResourceAmountRow, error) {
+	pipeline := billingDirectAmountPipeline(
+		windowStart,
+		windowEnd,
+		appTypeCVM,
+		resourceCVM,
+		enableOwnerMetrics,
+	)
+
+	cursor, err := c.mongoClient.
+		Database(c.config.Mongo.Database).
+		Collection(c.config.Mongo.BillingCollection).
+		Aggregate(ctx, pipeline, options.Aggregate().SetAllowDiskUse(true))
+	if err != nil {
+		return nil, fmt.Errorf("aggregate billing CVM amounts: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var rows []billingResourceAmountRow
+	if err := cursor.All(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("decode billing CVM amount rows: %w", err)
+	}
+
+	return rows, nil
+}
+
 func billingLLMTokenAmountPipeline(
 	windowStart, windowEnd time.Time,
 	enableOwnerMetrics bool,
 ) mongo.Pipeline {
-	groupID := any(nil)
+	return billingDirectAmountPipeline(
+		windowStart,
+		windowEnd,
+		appTypeLLMToken,
+		resourceLLMToken,
+		enableOwnerMetrics,
+	)
+}
 
+func billingDirectAmountPipeline(
+	windowStart, windowEnd time.Time,
+	appType int,
+	resourceName string,
+	enableOwnerMetrics bool,
+) mongo.Pipeline {
+	groupID := any(nil)
 	projectResult := bson.D{
 		{Key: "_id", Value: 0},
-		{Key: "resource", Value: bson.D{{Key: "$literal", Value: resourceLLMToken}}},
-		{Key: "app_type", Value: bson.D{{Key: "$literal", Value: appTypeLLMToken}}},
+		{Key: "resource", Value: bson.D{{Key: "$literal", Value: resourceName}}},
+		{Key: "app_type", Value: bson.D{{Key: "$literal", Value: appType}}},
 		{Key: "amount", Value: 1},
 	}
 	if enableOwnerMetrics {
@@ -337,8 +400,8 @@ func billingLLMTokenAmountPipeline(
 			{Key: "_id", Value: 0},
 			{Key: "owner", Value: "$_id.owner"},
 			{Key: "namespace", Value: "$_id.namespace"},
-			{Key: "resource", Value: bson.D{{Key: "$literal", Value: resourceLLMToken}}},
-			{Key: "app_type", Value: bson.D{{Key: "$literal", Value: appTypeLLMToken}}},
+			{Key: "resource", Value: bson.D{{Key: "$literal", Value: resourceName}}},
+			{Key: "app_type", Value: bson.D{{Key: "$literal", Value: appType}}},
 			{Key: "amount", Value: 1},
 		}
 	}
@@ -348,7 +411,7 @@ func billingLLMTokenAmountPipeline(
 			Key: "$match",
 			Value: bson.D{
 				{Key: "type", Value: billingTypeConsumption},
-				{Key: "app_type", Value: appTypeLLMToken},
+				{Key: "app_type", Value: appType},
 				{Key: "time", Value: bson.D{
 					{Key: "$gte", Value: windowStart},
 					{Key: "$lt", Value: windowEnd},
@@ -693,6 +756,14 @@ func aggregateBillingRows(
 }
 
 func billingResourceNames(enum string, appType any, propertyName string) []string {
+	if enum == resourceNetwork {
+		networkName := resourceWorkloadNetwork
+		if int64Value(appType) == appTypeObjectStorage {
+			networkName = resourceObjectStorageNetwork
+		}
+		return []string{networkName, resourceNetworkTotal}
+	}
+
 	if enum != resourceStorage {
 		return []string{propertyName}
 	}
@@ -708,6 +779,17 @@ func billingResourceNames(enum string, appType any, propertyName string) []strin
 	return []string{storageName, resourceStorageTotal}
 }
 
+func directAmountResourceName(appType any) string {
+	switch int64Value(appType) {
+	case appTypeLLMToken:
+		return resourceLLMToken
+	case appTypeCVM:
+		return resourceCVM
+	default:
+		return ""
+	}
+}
+
 func aggregateBillingDocuments(
 	docs []bson.M,
 	properties map[string]PropertyInfo,
@@ -718,6 +800,19 @@ func aggregateBillingDocuments(
 	for _, doc := range docs {
 		owner := stringValue(doc["owner"])
 		namespace := stringValue(doc["namespace"])
+		if resourceName := directAmountResourceName(doc["app_type"]); resourceName != "" {
+			key := resourceAmountKey{Resource: resourceName}
+			total := snapshot.ResourceAmounts[key]
+			total.Amount += float64(int64Value(doc["amount"]))
+			snapshot.ResourceAmounts[key] = total
+
+			ownerKey := key
+			ownerKey.Owner = owner
+			ownerKey.Namespace = namespace
+			ownerTotal := snapshot.OwnerResourceAmounts[ownerKey]
+			ownerTotal.Amount += float64(int64Value(doc["amount"]))
+			snapshot.OwnerResourceAmounts[ownerKey] = ownerTotal
+		}
 
 		for _, cost := range arrayValue(doc["app_costs"]) {
 			costMap, ok := cost.(bson.M)

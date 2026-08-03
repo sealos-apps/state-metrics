@@ -52,6 +52,8 @@ The raw Sealos data has several important characteristics:
 | Network unit | Network normally uses `1Mi`; Sealos stores hourly sent traffic for billing. |
 | Price fields | `billing.amount` is the record total. `app_costs[].amount` is the app item total. `app_costs[].used_amount` is the resource-level amount map. Sealos stores raw amount values in 1/1000000 base units. The collector emits raw amount values without currency labels. |
 | LLM token billing | Hourly archived `type=0`, `app_type=11` records store AIProxy/LLM token charges in the top-level `amount`; their timestamp is the archived hour start. The collector exposes them as `resource="llm_tokens"` amount metrics. |
+| CVM billing | Settled `type=0`, `app_type=7` records store cloud VM charges in the top-level `amount`; the collector exposes them as `resource="cvm"` amount metrics. CVM usage is not reconstructed from billing because the records do not contain a finalized `used` map. |
+| Network split | Resource enum `3` is emitted as `network` total plus `workload_network` or `object_storage_network`, selected by `app_costs.type=6` for object storage. |
 | Aggregation type | The `properties.price_type` controls how billing was generated: `AVG`, `SUM`, or `DIF`. The finalized `billing.app_costs[].used` already reflects that aggregation. |
 | Ownership | `owner` is the Sealos user owner. `namespace` is the charged namespace. |
 | App grouping | `app_type` identifies broad Sealos app categories; `app_costs[].type` and `app_costs[].name` identify entries inside the billing record. |
@@ -184,7 +186,7 @@ For this billing record:
 | `0` | `cpu` | `1m` | `500m`, equal to `0.5` average CPU cores for the billing hour. |
 | `1` | `memory` | `1Mi` | `1024Mi` average memory for the billing hour. |
 | `2` | `storage` | `1Mi` | Storage usage, split by `app_costs.type` into PVC, database backup, and object storage. |
-| `3` | `network` | `1Mi` | `2048Mi` sent during the billing hour. |
+| `3` | `network` | `1Mi` | `2048Mi` sent during the billing hour. The collector also emits a workload or object storage category and keeps this total. |
 
 ## Hourly Query Window
 
@@ -221,7 +223,9 @@ For default Sealos resources:
 | `cpu` | `1m` | Average mCPU used during the billing hour. Divide by `1000` to get average cores. |
 | `memory` | `1Mi` | Average MiB used during the billing hour. |
 | `storage` | `1Mi` | Average MiB used during the billing hour. |
-| `network` | `1Mi` | Total MiB sent during the billing hour. |
+| `network` | `1Mi` | Total MiB sent during the billing hour across workload and object storage traffic. |
+| `workload_network` | `1Mi` | Total MiB sent by non-object-storage workloads during the billing hour. |
+| `object_storage_network` | `1Mi` | Total MiB sent by object storage during the billing hour. |
 | `services.nodeports` | `1` | Average billed count during the billing hour. |
 
 For example, this metric means the selected billing records used `2500m` CPU
@@ -248,6 +252,17 @@ Default fallback mapping:
 | `2` | `storage` | `1Mi` |
 | `3` | `network` | `1Mi` |
 | `4` | `services.nodeports` | `1` |
+
+Derived billing categories use the same raw unit as their source enum:
+
+| Derived resource | Source |
+| --- | --- |
+| `pvc_storage` | Storage enum `2` with an app cost type other than database backup or object storage. |
+| `database_backup` | Storage enum `2` with app cost type `9`. |
+| `object_storage` | Storage enum `2` with app cost type `6`. |
+| `workload_network` | Network enum `3` with an app cost type other than object storage. |
+| `object_storage_network` | Network enum `3` with app cost type `6`. |
+| `cvm` | Top-level amount from app type `7`. |
 
 Additional enums from `properties` are collected automatically. Unknown enums
 are emitted as `resource_unknown_<enum>` with raw unit `1`.
@@ -302,6 +317,8 @@ sealos_billing_resource_usage{window_start="1760000000",window_end="1760003600",
 sealos_billing_resource_usage{window_start="1760000000",window_end="1760003600",resource="memory",unit="1Mi"} 4096
 sealos_billing_resource_usage{window_start="1760000000",window_end="1760003600",resource="storage",unit="1Mi"} 102400
 sealos_billing_resource_usage{window_start="1760000000",window_end="1760003600",resource="network",unit="1Mi"} 20480
+sealos_billing_resource_usage{window_start="1760000000",window_end="1760003600",resource="workload_network",unit="1Mi"} 16384
+sealos_billing_resource_usage{window_start="1760000000",window_end="1760003600",resource="object_storage_network",unit="1Mi"} 4096
 sealos_billing_resource_usage{window_start="1760000000",window_end="1760003600",resource="services.nodeports",unit="1"} 3
 ```
 
@@ -329,14 +346,16 @@ sealos_billing_owner_resource_usage{window_start="1760000000",window_end="176000
 sealos_billing_owner_resource_usage{window_start="1760000000",window_end="1760003600",owner="user-a",namespace="ns-user-a",resource="memory",unit="1Mi"} 2048
 sealos_billing_owner_resource_usage{window_start="1760000000",window_end="1760003600",owner="user-a",namespace="ns-user-a",resource="storage",unit="1Mi"} 51200
 sealos_billing_owner_resource_usage{window_start="1760000000",window_end="1760003600",owner="user-a",namespace="ns-user-a",resource="network",unit="1Mi"} 10240
+sealos_billing_owner_resource_usage{window_start="1760000000",window_end="1760003600",owner="user-a",namespace="ns-user-a",resource="workload_network",unit="1Mi"} 8192
+sealos_billing_owner_resource_usage{window_start="1760000000",window_end="1760003600",owner="user-a",namespace="ns-user-a",resource="object_storage_network",unit="1Mi"} 2048
 ```
 
 ### `sealos_billing_resource_amount`
 
-Raw billing amount grouped by resource across all owners and namespaces. Values
-come from `billing.app_costs[].used_amount`; AIProxy/LLM token charges come from
-the top-level `billing.amount` on hourly archived `type=0`, `app_type=11`
-records.
+Raw billing amount grouped by resource across all owners and namespaces. Resource
+amounts come from `billing.app_costs[].used_amount`; AIProxy/LLM token and CVM
+charges come from the top-level `billing.amount` on `type=0` records with
+`app_type=11` and `app_type=7` respectively.
 
 Type: Gauge
 
@@ -355,6 +374,7 @@ sealos_billing_resource_amount{window_start="1760000000",window_end="1760003600"
 sealos_billing_resource_amount{window_start="1760000000",window_end="1760003600",resource="memory"} 33512
 sealos_billing_resource_amount{window_start="1760000000",window_end="1760003600",resource="services.nodeports"} 2083
 sealos_billing_resource_amount{window_start="1760000000",window_end="1760003600",resource="llm_tokens"} 912345
+sealos_billing_resource_amount{window_start="1760000000",window_end="1760003600",resource="cvm"} 1200000
 ```
 
 ### `sealos_billing_owner_resource_amount`
@@ -733,6 +753,28 @@ Billed network MiB in the previous complete hourly billing window:
 
 ```promql
 max(sealos_billing_resource_usage{resource="network", unit="1Mi"})
+```
+
+Workload network MiB in the previous complete hourly billing window:
+
+```promql
+max(sealos_billing_resource_usage{resource="workload_network", unit="1Mi"})
+```
+
+Object storage network MiB in the previous complete hourly billing window:
+
+```promql
+max(sealos_billing_resource_usage{resource="object_storage_network", unit="1Mi"})
+```
+
+The `network` series is the total of `workload_network` and
+`object_storage_network`. The same split is available for
+`sealos_billing_resource_amount` and owner amount metrics.
+
+CVM billing amount in the previous complete hourly billing window:
+
+```promql
+max(sealos_billing_resource_amount{resource="cvm"}) / 1000000
 ```
 
 Namespace billed CPU cores:
