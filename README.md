@@ -193,6 +193,13 @@ docker run -d \
   --config=/etc/sealos-state-metrics/config.yaml
 ```
 
+### Release Packages
+
+GitHub Release `v*` tags or manual workflow dispatch now also trigger
+`.github/workflows/build_from_sealos.yaml` to publish the runtime image and
+cluster image manifests. If `OSS_*` credentials and `OSS_BUCKET` are set, the
+cluster tarballs are synced to OSS as well.
+
 ## Configuration
 
 ### Basic Configuration
