@@ -16,7 +16,7 @@ permissions:
 
 env:
   GHCR_RUNTIME_IMAGE: ghcr.io/${{ github.repository }}/${{ github.event.repository.name }}
-  GHCR_SEALOS_IMAGE: ghcr.io/${{ github.repository }}-cluster
+  GHCR_SEALOS_IMAGE: ghcr.io/${{ github.repository }}/${{ github.event.repository.name }}-cluster
   OSS_BUCKET: ${{ vars.OSS_BUCKET }}
   OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
   OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
