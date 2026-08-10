@@ -22,9 +22,7 @@ concurrency:
 
 env:
   DOCKERHUB_REPO: ${{ secrets.DOCKERHUB_REPO != '' && secrets.DOCKERHUB_REPO || secrets.DOCKERHUB_USERNAME != '' && format('{0}/{1}', secrets.DOCKERHUB_USERNAME, 'sealos-state-metrics') || '' }}
-  GHCR_REPO: ghcr.io/${{ github.repository }}
-  ALIYUN_REGISTRY: ${{ secrets.ALIYUN_REGISTRY }}
-  ALIYUN_REPO: ${{ secrets.ALIYUN_REPO != '' && secrets.ALIYUN_REPO || (secrets.ALIYUN_REGISTRY != '' && secrets.ALIYUN_USERNAME != '') && format('{0}/{1}/{2}', secrets.ALIYUN_REGISTRY, secrets.ALIYUN_USERNAME, 'sealos-state-metrics') || '' }}
+  GHCR_REPO: ghcr.io/${{ github.repository }}/${{ github.event.repository.name }}
 
 jobs:
   build-docker-images:
@@ -54,14 +52,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Login to Aliyun Registry
-        uses: docker/login-action@v3
-        if: ${{ github.event_name != 'pull_request' && github.actor != 'dependabot[bot]' && env.ALIYUN_REGISTRY }}
-        with:
-          registry: ${{ env.ALIYUN_REGISTRY }}
-          username: ${{ secrets.ALIYUN_USERNAME }}
-          password: ${{ secrets.ALIYUN_PASSWORD }}
-
       - name: Checkout
         uses: actions/checkout@v6
 
@@ -75,7 +65,6 @@ jobs:
           images: |
             ${{ env.DOCKERHUB_REPO }}
             ${{ env.GHCR_REPO }}
-            ${{ env.ALIYUN_REPO }}
 
       - name: Build for ${{ matrix.arch }}
         id: build
@@ -84,7 +73,7 @@ jobs:
           context: .
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/${{ matrix.arch }}
-          outputs: type=image,"name=${{ env.GHCR_REPO }}${{ env.DOCKERHUB_REPO && format(',{0}', env.DOCKERHUB_REPO) }}${{ env.ALIYUN_REPO && format(',{0}', env.ALIYUN_REPO) }}",name-canonical=true,push-by-digest=${{ github.event_name != 'pull_request' && github.actor != 'dependabot[bot]' }},push=${{ github.event_name != 'pull_request' && github.actor != 'dependabot[bot]' }}
+          outputs: type=image,"name=${{ env.GHCR_REPO }}${{ env.DOCKERHUB_REPO && format(',{0}', env.DOCKERHUB_REPO) }}",name-canonical=true,push-by-digest=${{ github.event_name != 'pull_request' && github.actor != 'dependabot[bot]' }},push=${{ github.event_name != 'pull_request' && github.actor != 'dependabot[bot]' }}
 
       - name: Export digest
         run: |
@@ -122,14 +111,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Login to Aliyun Registry
-        uses: docker/login-action@v3
-        if: ${{ env.ALIYUN_REGISTRY }}
-        with:
-          registry: ${{ env.ALIYUN_REGISTRY }}
-          username: ${{ secrets.ALIYUN_USERNAME }}
-          password: ${{ secrets.ALIYUN_PASSWORD }}
-
       - name: Download digests
         uses: actions/download-artifact@v7
         with:
@@ -147,7 +128,6 @@ jobs:
           images: |
             ${{ env.DOCKERHUB_REPO }}
             ${{ env.GHCR_REPO }}
-            ${{ env.ALIYUN_REPO }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -197,9 +177,6 @@ jobs:
           if [ -n "${DOCKERHUB_REPO}" ]; then
             images+=("${DOCKERHUB_REPO}-cluster")
           fi
-          if [ -n "${ALIYUN_REPO}" ]; then
-            images+=("${ALIYUN_REPO}-cluster")
-          fi
 
           {
             echo "images<<EOF"
@@ -244,14 +221,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Login to Aliyun Registry
-        uses: docker/login-action@v3
-        if: ${{ env.ALIYUN_REGISTRY }}
-        with:
-          registry: ${{ env.ALIYUN_REGISTRY }}
-          username: ${{ secrets.ALIYUN_USERNAME }}
-          password: ${{ secrets.ALIYUN_PASSWORD }}
 
       - name: Build images
         uses: docker/build-push-action@v6
