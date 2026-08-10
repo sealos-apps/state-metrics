@@ -3,18 +3,16 @@ name: Release
 on:
   push:
     branches:
-      - "**"
-    tags:
-      - "v*.*.*"
-    paths-ignore:
-      - "**/*.md"
-      - "**/*.yaml"
-  pull_request:
-    branches:
-      - "**"
-    paths-ignore:
-      - "**/*.md"
-      - "**/*.yaml"
+      - main
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Build version, supports sha-* or v*; empty uses current commit sha."
+        required: false
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -25,10 +23,50 @@ env:
   GHCR_REPO: ghcr.io/${{ github.repository }}/${{ github.event.repository.name }}
 
 jobs:
+  meta:
+    name: Release Metadata
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      is_release: ${{ steps.meta.outputs.is_release }}
+    steps:
+      - name: Compute tags
+        id: meta
+        run: |
+          set -euo pipefail
+
+          RAW_VERSION="${{ github.event.release.tag_name || github.event.inputs.version || '' }}"
+          if [[ -z "$(echo "${RAW_VERSION}" | xargs)" ]]; then
+            RAW_VERSION="sha-$(echo "${GITHUB_SHA}" | cut -c1-7)"
+          fi
+
+          IMAGE_TAG="$(echo "${RAW_VERSION}" | xargs)"
+          if [[ "${IMAGE_TAG}" != sha-* && "${IMAGE_TAG}" != v* ]]; then
+            echo "unsupported version input: ${IMAGE_TAG}. expected sha-* or v*." >&2
+            exit 1
+          fi
+
+          if [[ "${IMAGE_TAG}" == sha-* ]]; then
+            INPUT_SHA="${IMAGE_TAG#sha-}"
+            if [[ -z "${INPUT_SHA}" ]]; then
+              echo "invalid sha version input: ${IMAGE_TAG}" >&2
+              exit 1
+            fi
+            IS_RELEASE="false"
+          else
+            IS_RELEASE="true"
+          fi
+
+          echo "image_tag=${IMAGE_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "is_release=${IS_RELEASE}" >> "${GITHUB_OUTPUT}"
+
   build-docker-images:
     name: Build Docker Images
     permissions:
       packages: write
+    needs: [meta]
     strategy:
       matrix:
         include:
@@ -38,7 +76,6 @@ jobs:
     runs-on: ${{ matrix.runs-on || 'ubuntu-24.04' }}
     steps:
       - name: Login to GitHub Container Registry
-        if: ${{ github.event_name != 'pull_request' && github.actor != 'dependabot[bot]' }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -47,7 +84,7 @@ jobs:
 
       - name: Login to DockerHub
         uses: docker/login-action@v3
-        if: ${{ github.event_name != 'pull_request' && github.actor != 'dependabot[bot]' && env.DOCKERHUB_REPO }}
+        if: ${{ env.DOCKERHUB_REPO }}
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -58,22 +95,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: |
-            ${{ env.DOCKERHUB_REPO }}
-            ${{ env.GHCR_REPO }}
-
       - name: Build for ${{ matrix.arch }}
         id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          labels: ${{ steps.meta.outputs.labels }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.meta.outputs.image_tag }}
+            org.opencontainers.image.architecture=${{ matrix.arch }}
+            runnumber=${{ github.run_id }}
           platforms: linux/${{ matrix.arch }}
-          outputs: type=image,"name=${{ env.GHCR_REPO }}${{ env.DOCKERHUB_REPO && format(',{0}', env.DOCKERHUB_REPO) }}",name-canonical=true,push-by-digest=${{ github.event_name != 'pull_request' && github.actor != 'dependabot[bot]' }},push=${{ github.event_name != 'pull_request' && github.actor != 'dependabot[bot]' }}
+          outputs: type=image,"name=${{ env.GHCR_REPO }}${{ env.DOCKERHUB_REPO && format(',{0}', env.DOCKERHUB_REPO) }}",name-canonical=true,push-by-digest=true,push=true
 
       - name: Export digest
         run: |
@@ -93,9 +127,8 @@ jobs:
     name: Push Docker Images
     permissions:
       packages: write
-    needs: build-docker-images
+    needs: [meta, build-docker-images]
     runs-on: ubuntu-24.04
-    if: ${{ github.event_name != 'pull_request' && github.actor != 'dependabot[bot]' }}
     steps:
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -121,41 +154,44 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: |
-            ${{ env.DOCKERHUB_REPO }}
-            ${{ env.GHCR_REPO }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=sha
-
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests
         run: |
-          for TAG in $DOCKER_METADATA_OUTPUT_TAGS; do
-            docker buildx imagetools create -t $TAG \
+          set -euo pipefail
+          IMAGE_TAG="${{ needs.meta.outputs.image_tag }}"
+          docker buildx imagetools create \
+            -t "${GHCR_REPO}:${IMAGE_TAG}" \
+            $(printf '${{ env.GHCR_REPO }}@sha256:%s ' *)
+          if [ -n "${DOCKERHUB_REPO}" ]; then
+            docker buildx imagetools create \
+              -t "${DOCKERHUB_REPO}:${IMAGE_TAG}" \
               $(printf '${{ env.GHCR_REPO }}@sha256:%s ' *)
-            sleep 5
-          done
+          fi
+
+      - name: Update latest tag
+        if: ${{ needs.meta.outputs.is_release == 'true' }}
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            -t "${GHCR_REPO}:latest" \
+            $(printf '${{ env.GHCR_REPO }}@sha256:%s ' *)
+          if [ -n "${DOCKERHUB_REPO}" ]; then
+            docker buildx imagetools create \
+              -t "${DOCKERHUB_REPO}:latest" \
+              $(printf '${{ env.GHCR_REPO }}@sha256:%s ' *)
+          fi
+
       - name: Inspect image
         run: |
-          docker buildx imagetools inspect ${{ env.GHCR_REPO }}:${{ steps.meta.outputs.version }}
+          docker buildx imagetools inspect ${{ env.GHCR_REPO }}:${{ needs.meta.outputs.image_tag }}
 
   release-sealos-images:
     name: Push Sealos Images
     permissions:
       packages: write
-    needs: release-docker-images
+    needs: [meta, release-docker-images]
     runs-on: ubuntu-24.04
-    if: ${{ github.event_name != 'pull_request' && github.actor != 'dependabot[bot]' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -173,38 +209,29 @@ jobs:
         id: cluster_image_targets
         run: |
           set -euo pipefail
-          images=("${GHCR_REPO}-cluster")
+          IMAGE_TAG="${{ needs.meta.outputs.image_tag }}"
+          images=("${GHCR_REPO}-cluster:${IMAGE_TAG}")
+          if [ "${{ needs.meta.outputs.is_release }}" = "true" ]; then
+            images+=("${GHCR_REPO}-cluster:latest")
+          fi
           if [ -n "${DOCKERHUB_REPO}" ]; then
-            images+=("${DOCKERHUB_REPO}-cluster")
+            images+=("${DOCKERHUB_REPO}-cluster:${IMAGE_TAG}")
+            if [ "${{ needs.meta.outputs.is_release }}" = "true" ]; then
+              images+=("${DOCKERHUB_REPO}-cluster:latest")
+            fi
           fi
 
           {
-            echo "images<<EOF"
+            echo "tags<<EOF"
             printf '%s\n' "${images[@]}"
             echo "EOF"
-            csv=$(IFS=','; printf '%s' "${images[*]}")
-            echo "names=${csv}"
           } >> "${GITHUB_OUTPUT}"
-
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ steps.cluster_image_targets.outputs.images }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=sha
 
       - name: cache images
         working-directory: deploy
         run: |
           sudo sealos login -u "${{ github.repository_owner }}" -p "${{ secrets.GITHUB_TOKEN }}" ghcr.io
-          sed -i "s#image: ghcr.io/labring/sealos-state-metrics:latest#image: ${{ env.GHCR_REPO }}:${{ steps.meta.outputs.version }}#g" charts/sealos-state-metrics/values.yaml
+          sed -i "s#image: ghcr.io/labring/sealos-state-metrics:latest#image: ${{ env.GHCR_REPO }}:${{ needs.meta.outputs.image_tag }}#g" charts/sealos-state-metrics/values.yaml
           sudo sealos registry save --registry-dir=registry_amd64 --arch amd64 .
           sudo sealos registry save --registry-dir=registry_arm64 --arch arm64 .
 
@@ -227,7 +254,11 @@ jobs:
         with:
           context: deploy
           file: deploy/Kubefile.mutli
-          labels: ${{ steps.meta.outputs.labels }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.meta.outputs.image_tag }}
+            runnumber=${{ github.run_id }}
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
+          push: true
+          tags: ${{ steps.cluster_image_targets.outputs.tags }}
