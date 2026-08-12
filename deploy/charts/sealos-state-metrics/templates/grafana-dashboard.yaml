@@ -1,0 +1,47 @@
+{{- if .Values.grafanaDashboard.enabled }}
+{{- $dashboardName := printf "%s-dashboard" (include "sealos-state-metrics.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- if .Values.grafanaDashboard.operator.enabled }}
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: {{ $dashboardName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sealos-state-metrics.labels" . | nindent 4 }}
+  {{- with .Values.grafanaDashboard.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  configMapRef:
+    key: dashboard
+    name: {{ $dashboardName }}
+  contentCacheDuration: {{ .Values.grafanaDashboard.operator.contentCacheDuration }}
+  folder: {{ .Values.grafanaDashboard.folder }}
+  allowCrossNamespaceImport: {{ .Values.grafanaDashboard.operator.allowCrossNamespaceImport }}
+  instanceSelector:
+    {{- toYaml .Values.grafanaDashboard.operator.instanceSelector | nindent 4 }}
+  resyncPeriod: {{ .Values.grafanaDashboard.operator.resyncPeriod }}
+---
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $dashboardName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sealos-state-metrics.labels" . | nindent 4 }}
+    {{- if and .Values.grafanaDashboard.sidecar.enabled .Values.grafanaDashboard.sidecar.label }}
+    {{ .Values.grafanaDashboard.sidecar.label }}: "1"
+    {{- end }}
+    {{- with .Values.grafanaDashboard.sidecar.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.grafanaDashboard.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  dashboard: |-
+{{ .Files.Get "dashboards/sealos-state-metrics-dashboard.json" | indent 4 }}
+{{- end }}
