@@ -117,27 +117,43 @@ func (c *Collector) Poll(ctx context.Context) error {
 	queryCtx, cancel := context.WithTimeout(ctx, c.config.QueryTimeout)
 	defer cancel()
 
-	properties, err := c.loadProperties(queryCtx)
-	if err != nil {
-		return err
-	}
-
 	windowEnd := time.Now().UTC().Truncate(time.Hour)
 	windowStart := windowEnd.Add(-1 * time.Hour)
 
-	result, err := c.queryBillingAggregates(
-		queryCtx,
-		windowStart,
-		windowEnd,
-		c.config.EnableOwnerMetrics,
+	var (
+		wg            sync.WaitGroup
+		properties    map[string]PropertyInfo
+		result        *billingAggregateResult
+		propertiesErr error
+		resultErr     error
 	)
-	if err != nil {
-		return err
+	wg.Go(func() {
+		properties, propertiesErr = c.loadProperties(queryCtx)
+	})
+	wg.Go(func() {
+		result, resultErr = c.queryBillingAggregates(
+			queryCtx,
+			windowStart,
+			windowEnd,
+			c.config.EnableOwnerMetrics,
+		)
+	})
+	wg.Wait()
+
+	if propertiesErr != nil {
+		return propertiesErr
+	}
+
+	if resultErr != nil {
+		return resultErr
 	}
 
 	snapshot := aggregateBillingRows(
 		result.Resources,
-		result.ResourceAmounts,
+		append(
+			append(result.ResourceAmounts, result.LLMTokenAmounts...),
+			result.CVMAmounts...,
+		),
 		properties,
 		c.config.EnableOwnerMetrics,
 		windowStart,
@@ -150,12 +166,14 @@ func (c *Collector) Poll(ctx context.Context) error {
 	c.mu.Unlock()
 
 	c.logger.WithFields(log.Fields{
-		"enable_owner_metrics":   c.config.EnableOwnerMetrics,
-		"resource_groups":        len(result.Resources),
-		"resource_amount_groups": len(result.ResourceAmounts),
-		"window_start":           snapshot.WindowStart,
-		"window_end":             snapshot.WindowEnd,
-		"duration":               time.Since(startedAt),
+		"enable_owner_metrics":    c.config.EnableOwnerMetrics,
+		"resource_groups":         len(result.Resources),
+		"resource_amount_groups":  len(result.ResourceAmounts),
+		"llm_token_amount_groups": len(result.LLMTokenAmounts),
+		"cvm_amount_groups":       len(result.CVMAmounts),
+		"window_start":            snapshot.WindowStart,
+		"window_end":              snapshot.WindowEnd,
+		"duration":                time.Since(startedAt),
 	}).Info("Billing snapshot updated")
 
 	return nil
@@ -170,31 +188,46 @@ func (c *Collector) queryBillingAggregates(
 		wg                 sync.WaitGroup
 		resources          []billingAggregateRow
 		resourceAmounts    []billingResourceAmountRow
+		llmTokenAmounts    []billingResourceAmountRow
+		cvmAmounts         []billingResourceAmountRow
 		resourceErr        error
 		resourceAmountsErr error
+		llmTokenAmountsErr error
+		cvmAmountsErr      error
 	)
 
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		resources, resourceErr = c.queryBillingResourceRows(
 			ctx,
 			windowStart,
 			windowEnd,
 			enableOwnerMetrics,
 		)
-	}()
-	go func() {
-		defer wg.Done()
-
+	})
+	wg.Go(func() {
+		llmTokenAmounts, llmTokenAmountsErr = c.queryBillingLLMTokenAmountRows(
+			ctx,
+			windowStart,
+			windowEnd,
+			enableOwnerMetrics,
+		)
+	})
+	wg.Go(func() {
+		cvmAmounts, cvmAmountsErr = c.queryBillingCVMAmountRows(
+			ctx,
+			windowStart,
+			windowEnd,
+			enableOwnerMetrics,
+		)
+	})
+	wg.Go(func() {
 		resourceAmounts, resourceAmountsErr = c.queryBillingResourceAmountRows(
 			ctx,
 			windowStart,
 			windowEnd,
 			enableOwnerMetrics,
 		)
-	}()
+	})
 
 	wg.Wait()
 
@@ -206,9 +239,19 @@ func (c *Collector) queryBillingAggregates(
 		return nil, resourceAmountsErr
 	}
 
+	if llmTokenAmountsErr != nil {
+		return nil, llmTokenAmountsErr
+	}
+
+	if cvmAmountsErr != nil {
+		return nil, cvmAmountsErr
+	}
+
 	return &billingAggregateResult{
 		Resources:       resources,
 		ResourceAmounts: resourceAmounts,
+		LLMTokenAmounts: llmTokenAmounts,
+		CVMAmounts:      cvmAmounts,
 	}, nil
 }
 
@@ -268,6 +311,124 @@ func (c *Collector) queryBillingResourceAmountRows(
 	return rows, nil
 }
 
+func (c *Collector) queryBillingLLMTokenAmountRows(
+	ctx context.Context,
+	windowStart, windowEnd time.Time,
+	enableOwnerMetrics bool,
+) ([]billingResourceAmountRow, error) {
+	pipeline := billingLLMTokenAmountPipeline(windowStart, windowEnd, enableOwnerMetrics)
+
+	cursor, err := c.mongoClient.
+		Database(c.config.Mongo.Database).
+		Collection(c.config.Mongo.BillingCollection).
+		Aggregate(ctx, pipeline, options.Aggregate().SetAllowDiskUse(true))
+	if err != nil {
+		return nil, fmt.Errorf("aggregate billing LLM token amounts: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var rows []billingResourceAmountRow
+	if err := cursor.All(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("decode billing LLM token amount rows: %w", err)
+	}
+
+	return rows, nil
+}
+
+func (c *Collector) queryBillingCVMAmountRows(
+	ctx context.Context,
+	windowStart, windowEnd time.Time,
+	enableOwnerMetrics bool,
+) ([]billingResourceAmountRow, error) {
+	pipeline := billingDirectAmountPipeline(
+		windowStart,
+		windowEnd,
+		appTypeCVM,
+		resourceCVM,
+		enableOwnerMetrics,
+	)
+
+	cursor, err := c.mongoClient.
+		Database(c.config.Mongo.Database).
+		Collection(c.config.Mongo.BillingCollection).
+		Aggregate(ctx, pipeline, options.Aggregate().SetAllowDiskUse(true))
+	if err != nil {
+		return nil, fmt.Errorf("aggregate billing CVM amounts: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var rows []billingResourceAmountRow
+	if err := cursor.All(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("decode billing CVM amount rows: %w", err)
+	}
+
+	return rows, nil
+}
+
+func billingLLMTokenAmountPipeline(
+	windowStart, windowEnd time.Time,
+	enableOwnerMetrics bool,
+) mongo.Pipeline {
+	return billingDirectAmountPipeline(
+		windowStart,
+		windowEnd,
+		appTypeLLMToken,
+		resourceLLMToken,
+		enableOwnerMetrics,
+	)
+}
+
+func billingDirectAmountPipeline(
+	windowStart, windowEnd time.Time,
+	appType int,
+	resourceName string,
+	enableOwnerMetrics bool,
+) mongo.Pipeline {
+	groupID := any(nil)
+	projectResult := bson.D{
+		{Key: "_id", Value: 0},
+		{Key: "resource", Value: bson.D{{Key: "$literal", Value: resourceName}}},
+		{Key: "app_type", Value: bson.D{{Key: "$literal", Value: appType}}},
+		{Key: "amount", Value: 1},
+	}
+	if enableOwnerMetrics {
+		groupID = bson.D{
+			{Key: "owner", Value: "$owner"},
+			{Key: "namespace", Value: "$namespace"},
+		}
+		projectResult = bson.D{
+			{Key: "_id", Value: 0},
+			{Key: "owner", Value: "$_id.owner"},
+			{Key: "namespace", Value: "$_id.namespace"},
+			{Key: "resource", Value: bson.D{{Key: "$literal", Value: resourceName}}},
+			{Key: "app_type", Value: bson.D{{Key: "$literal", Value: appType}}},
+			{Key: "amount", Value: 1},
+		}
+	}
+
+	return mongo.Pipeline{
+		bson.D{{
+			Key: "$match",
+			Value: bson.D{
+				{Key: "type", Value: billingTypeConsumption},
+				{Key: "app_type", Value: appType},
+				{Key: "time", Value: bson.D{
+					{Key: "$gte", Value: windowStart},
+					{Key: "$lt", Value: windowEnd},
+				}},
+			},
+		}},
+		bson.D{{
+			Key: "$group",
+			Value: bson.D{
+				{Key: "_id", Value: groupID},
+				{Key: "amount", Value: bson.D{{Key: "$sum", Value: "$amount"}}},
+			},
+		}},
+		bson.D{{Key: "$project", Value: projectResult}},
+	}
+}
+
 func billingAggregatePipeline(
 	windowStart, windowEnd time.Time,
 	stages mongo.Pipeline,
@@ -303,10 +464,15 @@ func billingResourceUsageStages(enableOwnerMetrics bool) mongo.Pipeline {
 			}},
 		}},
 	}}
-	groupID := bson.D{{Key: "resource", Value: "$used.k"}}
+	usedProjectFields = append(usedProjectFields, bson.E{Key: "app_type", Value: "$app_costs.type"})
+	groupID := bson.D{
+		{Key: "resource", Value: "$used.k"},
+		{Key: "app_type", Value: "$app_type"},
+	}
 	projectResult := bson.D{
 		{Key: "_id", Value: 0},
 		{Key: "resource", Value: "$_id.resource"},
+		{Key: "app_type", Value: "$_id.app_type"},
 		{Key: "used", Value: 1},
 	}
 
@@ -369,10 +535,18 @@ func billingResourceAmountStages(enableOwnerMetrics bool) mongo.Pipeline {
 			}},
 		}},
 	}}
-	groupID := bson.D{{Key: "resource", Value: "$amount.k"}}
+	amountProjectFields = append(
+		amountProjectFields,
+		bson.E{Key: "app_type", Value: "$app_costs.type"},
+	)
+	groupID := bson.D{
+		{Key: "resource", Value: "$amount.k"},
+		{Key: "app_type", Value: "$app_type"},
+	}
 	projectResult := bson.D{
 		{Key: "_id", Value: 0},
 		{Key: "resource", Value: "$_id.resource"},
+		{Key: "app_type", Value: "$_id.app_type"},
 		{Key: "amount", Value: 1},
 	}
 
@@ -536,50 +710,84 @@ func aggregateBillingRows(
 
 	for _, row := range rows {
 		property := propertyInfo(row.Resource, properties)
-		key := resourceKey{
-			Resource: property.Name,
-			Unit:     property.Unit,
-		}
+
 		used := float64(int64Value(row.Used))
+		for _, resourceName := range billingResourceNames(row.Resource, row.AppType, property.Name) {
+			key := resourceKey{Resource: resourceName, Unit: property.Unit}
+			total := snapshot.Resources[key]
+			total.Used += used
+			snapshot.Resources[key] = total
 
-		total := snapshot.Resources[key]
-		total.Used += used
-		snapshot.Resources[key] = total
-
-		if enableOwnerMetrics {
-			ownerKey := key
-			ownerKey.Owner = row.Owner
-			ownerKey.Namespace = row.Namespace
-			ownerTotal := snapshot.OwnerResources[ownerKey]
-			ownerTotal.Used += used
-			snapshot.OwnerResources[ownerKey] = ownerTotal
+			if enableOwnerMetrics {
+				ownerKey := key
+				ownerKey.Owner = row.Owner
+				ownerKey.Namespace = row.Namespace
+				ownerTotal := snapshot.OwnerResources[ownerKey]
+				ownerTotal.Used += used
+				snapshot.OwnerResources[ownerKey] = ownerTotal
+			}
 		}
 	}
 
 	for _, row := range resourceAmounts {
 		property := propertyInfo(row.Resource, properties)
-		key := resourceAmountKey{
-			Resource: property.Name,
-		}
+
 		amount := float64(int64Value(row.Amount))
+		for _, resourceName := range billingResourceNames(row.Resource, row.AppType, property.Name) {
+			key := resourceAmountKey{Resource: resourceName}
+			total := snapshot.ResourceAmounts[key]
+			total.Amount += amount
+			snapshot.ResourceAmounts[key] = total
 
-		total := snapshot.ResourceAmounts[key]
-		total.Amount += amount
-		snapshot.ResourceAmounts[key] = total
-
-		if enableOwnerMetrics {
-			ownerKey := key
-			ownerKey.Owner = row.Owner
-			ownerKey.Namespace = row.Namespace
-			ownerTotal := snapshot.OwnerResourceAmounts[ownerKey]
-			ownerTotal.Amount += amount
-			snapshot.OwnerResourceAmounts[ownerKey] = ownerTotal
+			if enableOwnerMetrics {
+				ownerKey := key
+				ownerKey.Owner = row.Owner
+				ownerKey.Namespace = row.Namespace
+				ownerTotal := snapshot.OwnerResourceAmounts[ownerKey]
+				ownerTotal.Amount += amount
+				snapshot.OwnerResourceAmounts[ownerKey] = ownerTotal
+			}
 		}
 	}
 
 	snapshot.FinishedAt = time.Now().UTC()
 
 	return snapshot
+}
+
+func billingResourceNames(enum string, appType any, propertyName string) []string {
+	if enum == resourceNetwork {
+		networkName := resourceWorkloadNetwork
+		if int64Value(appType) == appTypeObjectStorage {
+			networkName = resourceObjectStorageNetwork
+		}
+		return []string{networkName, resourceNetworkTotal}
+	}
+
+	if enum != resourceStorage {
+		return []string{propertyName}
+	}
+
+	storageName := resourcePVCStorage
+	switch int64Value(appType) {
+	case appTypeDatabaseBackup:
+		storageName = resourceDatabaseBackup
+	case appTypeObjectStorage:
+		storageName = resourceObjectStorage
+	}
+
+	return []string{storageName, resourceStorageTotal}
+}
+
+func directAmountResourceName(appType any) string {
+	switch int64Value(appType) {
+	case appTypeLLMToken:
+		return resourceLLMToken
+	case appTypeCVM:
+		return resourceCVM
+	default:
+		return ""
+	}
 }
 
 func aggregateBillingDocuments(
@@ -592,6 +800,19 @@ func aggregateBillingDocuments(
 	for _, doc := range docs {
 		owner := stringValue(doc["owner"])
 		namespace := stringValue(doc["namespace"])
+		if resourceName := directAmountResourceName(doc["app_type"]); resourceName != "" {
+			key := resourceAmountKey{Resource: resourceName}
+			total := snapshot.ResourceAmounts[key]
+			total.Amount += float64(int64Value(doc["amount"]))
+			snapshot.ResourceAmounts[key] = total
+
+			ownerKey := key
+			ownerKey.Owner = owner
+			ownerKey.Namespace = namespace
+			ownerTotal := snapshot.OwnerResourceAmounts[ownerKey]
+			ownerTotal.Amount += float64(int64Value(doc["amount"]))
+			snapshot.OwnerResourceAmounts[ownerKey] = ownerTotal
+		}
 
 		for _, cost := range arrayValue(doc["app_costs"]) {
 			costMap, ok := cost.(bson.M)
@@ -602,38 +823,37 @@ func aggregateBillingDocuments(
 			used := usedMap(costMap["used"])
 			for enum, value := range used {
 				property := propertyInfo(enum, properties)
-				key := resourceKey{
-					Resource: property.Name,
-					Unit:     property.Unit,
-				}
-				total := snapshot.Resources[key]
-				total.Used += float64(value)
-				snapshot.Resources[key] = total
+				for _, resourceName := range billingResourceNames(enum, costMap["type"], property.Name) {
+					key := resourceKey{Resource: resourceName, Unit: property.Unit}
+					total := snapshot.Resources[key]
+					total.Used += float64(value)
+					snapshot.Resources[key] = total
 
-				ownerKey := key
-				ownerKey.Owner = owner
-				ownerKey.Namespace = namespace
-				ownerTotal := snapshot.OwnerResources[ownerKey]
-				ownerTotal.Used += float64(value)
-				snapshot.OwnerResources[ownerKey] = ownerTotal
+					ownerKey := key
+					ownerKey.Owner = owner
+					ownerKey.Namespace = namespace
+					ownerTotal := snapshot.OwnerResources[ownerKey]
+					ownerTotal.Used += float64(value)
+					snapshot.OwnerResources[ownerKey] = ownerTotal
+				}
 			}
 
 			usedAmounts := usedMap(costMap["used_amount"])
 			for enum, value := range usedAmounts {
 				property := propertyInfo(enum, properties)
-				key := resourceAmountKey{
-					Resource: property.Name,
-				}
-				total := snapshot.ResourceAmounts[key]
-				total.Amount += float64(value)
-				snapshot.ResourceAmounts[key] = total
+				for _, resourceName := range billingResourceNames(enum, costMap["type"], property.Name) {
+					key := resourceAmountKey{Resource: resourceName}
+					total := snapshot.ResourceAmounts[key]
+					total.Amount += float64(value)
+					snapshot.ResourceAmounts[key] = total
 
-				ownerKey := key
-				ownerKey.Owner = owner
-				ownerKey.Namespace = namespace
-				ownerTotal := snapshot.OwnerResourceAmounts[ownerKey]
-				ownerTotal.Amount += float64(value)
-				snapshot.OwnerResourceAmounts[ownerKey] = ownerTotal
+					ownerKey := key
+					ownerKey.Owner = owner
+					ownerKey.Namespace = namespace
+					ownerTotal := snapshot.OwnerResourceAmounts[ownerKey]
+					ownerTotal.Amount += float64(value)
+					snapshot.OwnerResourceAmounts[ownerKey] = ownerTotal
+				}
 			}
 		}
 	}
