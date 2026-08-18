@@ -20,6 +20,8 @@ metadata:
   labels:
     {{- include "sealos-state-metrics.labels" . | nindent 4 }}
 data:
+  base-config.yaml: |
+    {{- $appConfig | toYaml | nindent 4 }}
   config.yaml: |
     {{- $appConfig | toYaml | nindent 4 }}
 {{- end }}
