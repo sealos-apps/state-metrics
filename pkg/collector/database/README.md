@@ -824,7 +824,6 @@ Startup → [Check Interval Loop]
 
 - **Node Collector**: Monitors Kubernetes node health
 - **Domain Collector**: Monitors external domain health
-- **UserBalance Collector**: Monitors user account balances
 
 ## Future Enhancements
 

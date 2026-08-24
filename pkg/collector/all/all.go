@@ -13,6 +13,5 @@ import (
 	_ "github.com/labring/sealos-state-metrics/pkg/collector/lvm"
 	_ "github.com/labring/sealos-state-metrics/pkg/collector/node"
 	_ "github.com/labring/sealos-state-metrics/pkg/collector/registryproxy"
-	_ "github.com/labring/sealos-state-metrics/pkg/collector/userbalance"
 	_ "github.com/labring/sealos-state-metrics/pkg/collector/zombie"
 )
