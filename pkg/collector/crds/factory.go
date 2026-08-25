@@ -21,7 +21,7 @@ func init() {
 	registry.MustRegister(collectorName, NewCollector)
 }
 
-// NewCollector creates a new CRDs collector.
+// NewCollector creates a new UserBalance collector
 func NewCollector(factoryCtx *collector.FactoryContext) (collector.Collector, error) {
 	// 1. Start with hard-coded defaults
 	cfg := NewDefaultConfig()
@@ -30,7 +30,7 @@ func NewCollector(factoryCtx *collector.FactoryContext) (collector.Collector, er
 	// ConfigLoader is never nil and handles priority: defaults < file < env
 	if err := factoryCtx.ConfigLoader.LoadModuleConfig("collectors.crds", cfg); err != nil {
 		factoryCtx.Logger.WithError(err).
-			Debug("Failed to load crds collector config, using defaults")
+			Debug("Failed to load userbalance c config, using defaults")
 	}
 
 	// 3. Check if any CRDs configured (no config = disabled)

@@ -140,6 +140,7 @@ collectors:
 | **[zombie](pkg/collector/zombie/)** | Polling | Yes | Zombie (defunct) process detection in containers |
 | **[lvm](pkg/collector/lvm/)** | Polling | No | LVM storage metrics, volume group capacity and usage (node-level) |
 | **[cloudbalance](pkg/collector/cloudbalance/)** | Polling | Yes | Cloud provider account balance (Alibaba Cloud, Tencent Cloud, VolcEngine) |
+| **[userbalance](pkg/collector/userbalance/)** | Polling | Yes | Sealos user account balance from PostgreSQL database |
 | **[crds](pkg/collector/crds/)** | Informer | Yes | Dynamic monitoring of any Custom Resource Definition |
 
 > 💡 **New collectors are easy to add!** See [Creating Custom Collectors](#creating-custom-collectors) below.

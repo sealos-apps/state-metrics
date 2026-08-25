@@ -90,6 +90,37 @@ enabledCollectors:
 # ============================================================================
 
 collectors:
+  # User Balance collector - monitors sealos user balance
+  userbalance:
+    # Check interval for querying cloud balances
+    checkInterval: "5m"
+    # user postgres dsn
+    database:
+      dsn: "postgresql://username:password@www.example.com:port/defaultdb"
+      # Optional regional database used only to map userUid to UserCr.crName.
+      # When empty, all discovered users are emitted with owner="". When set,
+      # only users mapped by this region's UserCr table are emitted.
+      localDsn: ""
+    # Auto-discover users whose Account.balance - Account.deduction_balance is
+    # greater than 0. Users listed below are always collected and override
+    # labels for matching auto-discovered users.
+    positiveBalanceUsers: false
+    # sealos user list
+    users:
+      - region: us-west-2
+        uuid: 550e8400-e29b-41d4-a716-446655440002
+        uid: user002
+        owner: jane.smith@example.com
+        type: standard
+        level: silver
+
+      - region: eu-west-1
+        uuid: 550e8400-e29b-41d4-a716-446655440003
+        uid: user003
+        owner: bob.wilson@example.com
+        type: enterprise
+        level: platinum
+
   # Billing collector - reads finalized Sealos billing records from MongoDB.
   # Reads the previous complete hourly billing window. CPU resource_usage is mCPU; divide by 1000 for cores.
   billing:

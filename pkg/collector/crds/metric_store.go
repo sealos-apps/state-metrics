@@ -367,18 +367,15 @@ func (s *metricStore) buildObjectMetrics(obj *unstructured.Unstructured) (object
 		case "map_state":
 			result.series = append(
 				result.series,
-				s.buildMapStateMetrics(obj, metric, commonLabels)...,
-			)
+				s.buildMapStateMetrics(obj, metric, commonLabels)...)
 		case "map_gauge":
 			result.series = append(
 				result.series,
-				s.buildMapGaugeMetrics(obj, metric, commonLabels)...,
-			)
+				s.buildMapGaugeMetrics(obj, metric, commonLabels)...)
 		case "conditions":
 			result.series = append(
 				result.series,
-				s.buildConditionMetrics(obj, metric, commonLabels)...,
-			)
+				s.buildConditionMetrics(obj, metric, commonLabels)...)
 		}
 	}
 

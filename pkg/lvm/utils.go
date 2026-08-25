@@ -183,8 +183,7 @@ func parseVolumeGroup(m map[string]string) (VolumeGroup, error) {
 	for key, value := range resQuantityMap {
 		sizeBytes, err = strconv.ParseInt(
 			strings.TrimSuffix(strings.ToLower(m[key]), "b"),
-			10, 64,
-		)
+			10, 64)
 		if err != nil {
 			err = fmt.Errorf("invalid format of %v=%v for vg %v: %w", key, m[key], vg.Name, err)
 		}
@@ -529,8 +528,7 @@ func parsePhysicalVolume(m map[string]string) (PhysicalVolume, error) {
 	for key, value := range resQuantityMap {
 		sizeBytes, err = strconv.ParseInt(
 			strings.TrimSuffix(strings.ToLower(m[key]), "b"),
-			10, 64,
-		)
+			10, 64)
 		if err != nil {
 			err = fmt.Errorf("invalid format of %v=%v for pv %v: %w", key, m[key], pv.Name, err)
 			return pv, err
