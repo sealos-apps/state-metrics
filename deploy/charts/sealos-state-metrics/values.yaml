@@ -136,7 +136,7 @@ enabledCollectors:
   - zombie
   - lvm
   - cloudbalance
-  # - userbalance  # Disabled by default
+  - userbalance
   - crds
   - database
 
