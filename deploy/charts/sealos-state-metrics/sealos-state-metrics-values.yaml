@@ -1,0 +1,19 @@
+# User overrides for sealos-state-metrics.
+#
+# This file is copied to:
+#   /root/.sealos/cloud/values/apps/sealos-state-metrics/sealos-state-metrics-values.yaml
+#
+# It is loaded after the chart defaults on every install or upgrade. Uncomment
+# userbalance below to enable it while retaining the default collectors.
+
+enabledCollectors:
+  - domain
+  # - registryproxy
+  - node
+  - imagepull
+  - zombie
+  - lvm
+  - cloudbalance
+  # - userbalance
+  - crds
+  - database
