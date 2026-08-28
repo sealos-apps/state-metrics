@@ -1,0 +1,260 @@
+# User overrides for sealos-state-metrics.
+#
+# This file is copied to:
+#   /root/.sealos/cloud/values/core/sealos-state-metrics-values.yaml
+#
+# It is loaded after the chart defaults on every install or upgrade. Values not
+# defined here continue to use the chart defaults.
+
+# Deployment configuration
+deploymentMode: daemonset
+replicaCount: 1
+
+scheduling:
+  preferDifferentNodes:
+    enabled: true
+    topologyKey: kubernetes.io/hostname
+    weight: 100
+
+updateStrategy:
+  maxUnavailable: 25%
+
+# TLS configuration for metrics endpoint
+tls:
+  enabled: true
+  duration: 2160h
+  renewBefore: 720h
+  organization: "sealos"
+  issuer: ""
+  issuerKind: "Issuer"
+  insecureSkipVerify: false
+
+# Authentication configuration for metrics endpoint
+auth:
+  enabled: true
+  allowedServiceAccounts: []
+
+vmServiceScrape:
+  enabled: true
+  namespace: ""
+  labels: {}
+  interval: 30s
+  scrapeTimeout: 10s
+  metricRelabelConfigs: []
+  relabelConfigs: []
+
+# Application configuration
+config:
+  debugServer:
+    enabled: true
+    port: 8080
+    metricsPath: "/metrics"
+    healthPath: "/health"
+
+  pprof:
+    enabled: false
+    port: 6060
+
+  kubernetes:
+    kubeconfig: ""
+    qps: 50
+    burst: 100
+
+  metrics:
+    namespace: "sealos"
+
+  logging:
+    level: "info"
+    format: "text"
+    debug: false
+
+  performance:
+    informerResyncPeriod: "10m"
+
+# Leader election configuration
+leaderElection:
+  enabled: true
+  leaseName: "sealos-state-metrics"
+  leaseDuration: "15s"
+  renewDeadline: "10s"
+  retryPeriod: "2s"
+
+# Enabled collectors
+enabledCollectors:
+  - domain
+  # - registryproxy
+  - node
+  - imagepull
+  - zombie
+  - lvm
+  # - cloudbalance
+  # - userbalance
+  - crds
+  - database
+
+# Instance identity (optional, defaults to NODE_NAME > POD_NAME > auto-detected)
+identity: ""
+
+# Collector configuration
+collectors:
+  domain:
+    domains: []
+    checkTimeout: "30s"
+    checkInterval: "1m"
+    dialRetries: 3
+    includeIPv4: true
+    includeIPv6: true
+    includeCertCheck: true
+    includeHTTPCheck: true
+
+  registryproxy:
+    registries: []
+    checkTimeout: "30s"
+    checkInterval: "1m"
+
+  node: {}
+
+  imagepull:
+    slowPullThreshold: "5m"
+
+  zombie:
+    checkInterval: "30s"
+
+  cloudbalance:
+    checkInterval: "5m"
+    accounts: []
+
+  lvm:
+    updateInterval: "10s"
+
+  database:
+    checkTimeout: "10s"
+    checkInterval: "5m"
+    namespaces: []
+    mysqlConcurrency: 50
+    postgresqlConcurrency: 50
+    mongodbConcurrency: 50
+    redisConcurrency: 100
+
+  cockroachlicense:
+    checkTimeout: "10s"
+    checkInterval: "5m"
+    clusters: []
+
+  crds:
+    crds:
+      - name: kubeblocks-cluster
+        gvr:
+          group: apps.kubeblocks.io
+          version: v1alpha1
+          resource: clusters
+        namespaces: []
+        resyncPeriod: 10m
+        commonLabels:
+          name: metadata.name
+          namespace: metadata.namespace
+        metrics:
+          - type: info
+            name: kubeblocks_cluster_info
+            help: "Cluster information"
+            labels:
+              cluster_def: spec.clusterDefinitionRef
+              cluster_version: spec.clusterVersionRef
+          - type: count
+            name: kubeblocks_phase_count
+            help: "kubeblocks phase count"
+            path: status.phase
+          - type: string_state
+            name: kubeblocks_cluster_status
+            help: "kubeblocks cluster status"
+            path: status.phase
+
+      - name: kubeblocks-backup
+        gvr:
+          group: dataprotection.kubeblocks.io
+          version: v1alpha1
+          resource: backups
+        namespaces: []
+        resyncPeriod: 10m
+        commonLabels:
+          name: metadata.name
+          namespace: metadata.namespace
+        metrics:
+          - type: info
+            name: kubeblocks_backup_info
+            help: "Backup information"
+            labels:
+              backup_method: spec.method
+              backup_policy_name: spec.backupPolicyName
+          - type: count
+            name: kubeblocks_backup_count
+            help: "kubeblocks backup count"
+            path: status.phase
+          - type: string_state
+            name: kubeblocks_backup_status
+            help: "kubeblocks backup status"
+            path: status.phase
+
+      - name: devbox
+        gvr:
+          group: devbox.sealos.io
+          version: v1alpha2
+          resource: devboxes
+        namespaces: []
+        resyncPeriod: 10m
+        commonLabels:
+          name: metadata.name
+          namespace: metadata.namespace
+        metrics:
+          - type: info
+            name: devbox_info
+            help: "Devbox information"
+            labels:
+              image: spec.image
+          - type: count
+            name: devbox_phase_count
+            help: "devbox phase count"
+            path: status.phase
+          - type: string_state
+            name: devbox_cluster_status
+            help: "devbox cluster status"
+            path: status.phase
+
+podAnnotations: {}
+podSecurityContext: {}
+securityContext:
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65532
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: server
+  initialDelaySeconds: 15
+  periodSeconds: 20
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: server
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+nodeSelector: {}
+tolerations:
+  - operator: Exists
+affinity: {}
+priorityClassName: ""
