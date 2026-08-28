@@ -88,7 +88,6 @@ enabledCollectors:
   - zombie
   - lvm
   # - cloudbalance
-  - userbalance
   - crds
   - database
 
