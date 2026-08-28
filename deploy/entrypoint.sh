@@ -8,8 +8,7 @@ RELEASE_NAMESPACE=${RELEASE_NAMESPACE:-"sealos"}
 CHART_PATH=${CHART_PATH:-"${SCRIPT_DIR}/charts/sealos-state-metrics"}
 HELM_OPTS=${HELM_OPTS:-""}
 PACKAGED_APP_VALUES_FILE=${PACKAGED_APP_VALUES_FILE:-${CHART_APP_VALUES_FILE:-"${CHART_PATH}/sealos-state-metrics-values.yaml"}}
-APP_VALUES_DIR=${APP_VALUES_DIR:-"/root/.sealos/cloud/values/apps/sealos-state-metrics"}
-USER_VALUES_FILE="${APP_VALUES_DIR}/sealos-state-metrics-values.yaml"
+USER_VALUES_FILE=${USER_VALUES_FILE:-"/root/.sealos/cloud/values/core/sealos-state-metrics-values.yaml"}
 
 [ -d "${CHART_PATH}" ] || {
   echo "chart directory not found: ${CHART_PATH}" >&2
@@ -21,7 +20,7 @@ USER_VALUES_FILE="${APP_VALUES_DIR}/sealos-state-metrics-values.yaml"
   exit 1
 }
 
-mkdir -p "${APP_VALUES_DIR}"
+mkdir -p "$(dirname "${USER_VALUES_FILE}")"
 
 if [ ! -f "${USER_VALUES_FILE}" ]; then
   cp "${PACKAGED_APP_VALUES_FILE}" "${USER_VALUES_FILE}"

@@ -1,7 +1,7 @@
 # User overrides for sealos-state-metrics.
 #
 # This file is copied to:
-#   /root/.sealos/cloud/values/apps/sealos-state-metrics/sealos-state-metrics-values.yaml
+#   /root/.sealos/cloud/values/core/sealos-state-metrics-values.yaml
 #
 # It is loaded after the chart defaults on every install or upgrade. Values not
 # defined here continue to use the chart defaults.
