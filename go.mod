@@ -21,7 +21,7 @@ require (
 	github.com/redis/go-redis/v9 v9.17.3
 	github.com/sirupsen/logrus v1.9.4
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/billing v1.3.42
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.47
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.149
 	github.com/testcontainers/testcontainers-go v0.43.0
 	github.com/volcengine/volcengine-go-sdk v1.2.12
 	go.mongodb.org/mongo-driver v1.17.9
