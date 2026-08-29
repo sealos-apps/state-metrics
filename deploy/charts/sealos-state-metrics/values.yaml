@@ -118,6 +118,47 @@ config:
   performance:
     informerResyncPeriod: "10m"
 
+configController:
+  enabled: false
+  image: ghcr.io/labring/sealos-state-metrics-config-controller:latest
+  imagePullPolicy: IfNotPresent
+  replicaCount: 1
+  namespace: ""
+  watchNamespace: ""
+  configMapName: ""
+  configKey: config.yaml
+  baseConfigKey: base-config.yaml
+  leaderElection: true
+  metricsBindAddress: "0"
+  healthProbeBindAddress: ":8081"
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: ""
+  rbac:
+    create: true
+  podAnnotations: {}
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  resources:
+    limits:
+      cpu: 500m
+      memory: 128Mi
+    requests:
+      cpu: 10m
+      memory: 64Mi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
 # Leader election configuration
 leaderElection:
   enabled: true

@@ -1,0 +1,108 @@
+{{- if .Values.configController.enabled }}
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: collectorconfigs.state-metrics.sealos.io
+  labels:
+    {{- include "sealos-state-metrics.configControllerLabels" . | nindent 4 }}
+spec:
+  group: state-metrics.sealos.io
+  names:
+    kind: CollectorConfig
+    listKind: CollectorConfigList
+    plural: collectorconfigs
+    singular: collectorconfig
+    shortNames:
+      - ssmcc
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      schema:
+        openAPIV3Schema:
+          description: CollectorConfig is the Schema for the collectorconfigs API
+          type: object
+          required:
+            - spec
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: spec defines the desired state of CollectorConfig
+              type: object
+              required:
+                - collector
+              properties:
+                collector:
+                  description: Collector name written under collectors.<collector> and appended to enabledCollectors.
+                  minLength: 1
+                  type: string
+                enabled:
+                  default: true
+                  description: Set false to keep the object without contributing to generated config.
+                  type: boolean
+                value:
+                  description: YAML/JSON-compatible collector configuration fragment.
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+            status:
+              description: status defines the observed state of CollectorConfig
+              type: object
+              properties:
+                conditions:
+                  type: array
+                  x-kubernetes-list-map-keys:
+                    - type
+                  x-kubernetes-list-type: map
+                  items:
+                    type: object
+                    required:
+                      - lastTransitionTime
+                      - message
+                      - reason
+                      - status
+                      - type
+                    properties:
+                      lastTransitionTime:
+                        format: date-time
+                        type: string
+                      message:
+                        maxLength: 32768
+                        type: string
+                      observedGeneration:
+                        format: int64
+                        minimum: 0
+                        type: integer
+                      reason:
+                        maxLength: 1024
+                        minLength: 1
+                        pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                        type: string
+                      status:
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                        type: string
+                      type:
+                        maxLength: 316
+                        pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                        type: string
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Collector
+          type: string
+          jsonPath: .spec.collector
+        - name: Enabled
+          type: boolean
+          jsonPath: .spec.enabled
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+{{- end }}

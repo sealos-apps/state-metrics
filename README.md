@@ -104,6 +104,16 @@ collectors:
     includeIPv6: true
 ```
 
+### 🧩 CRD-Driven Collector Configuration
+
+The optional config controller watches `CollectorConfig` custom resources and
+rewrites the normal ConfigMap `config.yaml` consumed by the metrics process. This
+lets external systems add, update, or delete collector configuration without
+editing the whole configuration file.
+
+See [Config Controller](docs/config-controller.md) for the CRD format, merge
+rules, Helm values, and examples.
+
 ### 🏗️ Production-Ready Architecture
 
 **Deployment Modes:**
