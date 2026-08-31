@@ -89,7 +89,7 @@ grafanaDashboard:
   folder: grafana
   operator:
     enabled: true
-    allowCrossNamespaceImport: false
+    allowCrossNamespaceImport: true
     contentCacheDuration: 0s
     resyncPeriod: 876000h
     instanceSelector:

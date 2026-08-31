@@ -338,12 +338,13 @@ grafanaDashboard:
   enabled: true
   operator:
     enabled: true
+    allowCrossNamespaceImport: true
     instanceSelector:
       matchLabels:
         dashboards: grafana
 ```
 
-The Sealos install script deletes the existing dashboard ConfigMap and
+The Sealos deployment entrypoint deletes the existing dashboard ConfigMap and
 GrafanaDashboard in the release namespace before applying the chart.
 
 ### Manual Prometheus Configuration
