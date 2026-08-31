@@ -328,6 +328,25 @@ vmServiceScrape:
   scrapeTimeout: 10s
 ```
 
+### Grafana Dashboard
+
+The Helm chart creates a `GrafanaDashboard` resource and referenced ConfigMap by
+default, matching the Grafana Operator setup used by the VictoriaMetrics stack:
+
+```yaml
+grafanaDashboard:
+  enabled: true
+  operator:
+    enabled: true
+    allowCrossNamespaceImport: true
+    instanceSelector:
+      matchLabels:
+        dashboards: grafana
+```
+
+The Sealos deployment entrypoint deletes the existing dashboard ConfigMap and
+GrafanaDashboard in the release namespace before applying the chart.
+
 ### Manual Prometheus Configuration
 
 ```yaml

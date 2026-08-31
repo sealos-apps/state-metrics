@@ -88,6 +88,19 @@ The following table lists the configurable parameters of the chart and their def
 | `serviceMonitor.interval` | Scrape interval | `30s` |
 | `serviceMonitor.scrapeTimeout` | Scrape timeout | `10s` |
 
+### Grafana Dashboard
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `grafanaDashboard.enabled` | Create Grafana dashboard resources | `true` |
+| `grafanaDashboard.annotations` | Extra annotations for dashboard resources | `{}` |
+| `grafanaDashboard.folder` | Grafana folder name | `grafana` |
+| `grafanaDashboard.operator.enabled` | Create a `GrafanaDashboard` CRD that references the dashboard ConfigMap | `true` |
+| `grafanaDashboard.operator.allowCrossNamespaceImport` | Allow Grafana Operator to import the dashboard ConfigMap across namespaces | `true` |
+| `grafanaDashboard.operator.instanceSelector` | Grafana Operator instance selector | `{ dashboards: grafana }` |
+| `grafanaDashboard.sidecar.enabled` | Label the ConfigMap for Grafana sidecar discovery instead of relying on Grafana Operator | `false` |
+| `grafanaDashboard.sidecar.label` | Grafana sidecar discovery label | `grafana_dashboard` |
+
 ### Application Configuration
 
 | Parameter | Description | Default |

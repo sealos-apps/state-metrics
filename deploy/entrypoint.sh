@@ -29,6 +29,20 @@ fi
 
 echo "Using user values from ${USER_VALUES_FILE}"
 
+cleanup_grafana_dashboard() {
+  local dashboard_name="${RELEASE_NAME}-dashboard"
+
+  command -v kubectl >/dev/null 2>&1 || return 0
+
+  if kubectl api-resources --api-group=grafana.integreatly.org --namespaced=true -o name 2>/dev/null | grep -qx grafanadashboards.grafana.integreatly.org; then
+    kubectl delete grafanadashboard.grafana.integreatly.org "${dashboard_name}" -n "${RELEASE_NAMESPACE}" --ignore-not-found || true
+  fi
+
+  kubectl delete configmap "${dashboard_name}" -n "${RELEASE_NAMESPACE}" --ignore-not-found || true
+}
+
+cleanup_grafana_dashboard
+
 # HELM_OPTS intentionally accepts additional Helm flags supplied by the installer.
 # shellcheck disable=SC2086
 helm upgrade -i "${RELEASE_NAME}" "${CHART_PATH}" \

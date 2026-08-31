@@ -83,6 +83,23 @@ vmServiceScrape:
   metricRelabelConfigs: []
   relabelConfigs: []
 
+grafanaDashboard:
+  enabled: true
+  annotations: {}
+  folder: grafana
+  operator:
+    enabled: true
+    allowCrossNamespaceImport: true
+    contentCacheDuration: 0s
+    resyncPeriod: 876000h
+    instanceSelector:
+      matchLabels:
+        dashboards: grafana
+  sidecar:
+    enabled: false
+    label: grafana_dashboard
+    labels: {}
+
 # Application configuration
 config:
   server:
