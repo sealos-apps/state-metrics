@@ -70,6 +70,45 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
+Config controller name.
+*/}}
+{{- define "sealos-state-metrics.configControllerName" -}}
+{{- printf "%s-config-controller" (include "sealos-state-metrics.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Config controller selector labels.
+*/}}
+{{- define "sealos-state-metrics.configControllerSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "sealos-state-metrics.name" . }}-config-controller
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{/*
+Config controller common labels.
+*/}}
+{{- define "sealos-state-metrics.configControllerLabels" -}}
+helm.sh/chart: {{ include "sealos-state-metrics.chart" . }}
+{{ include "sealos-state-metrics.configControllerSelectorLabels" . }}
+{{- if .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/component: config-controller
+{{- end }}
+
+{{/*
+Config controller ServiceAccount name.
+*/}}
+{{- define "sealos-state-metrics.configControllerServiceAccountName" -}}
+{{- if .Values.configController.serviceAccount.create }}
+{{- default (include "sealos-state-metrics.configControllerName" .) .Values.configController.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.configController.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{/*
 Return the proper image name
 */}}
 {{- define "sealos-state-metrics.image" -}}
