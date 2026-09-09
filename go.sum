@@ -680,8 +680,8 @@ github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD
 github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/billing v1.3.42 h1:jAjTd2xz+vsPldRqrCz5mp2Xw4uB4j9FJuuaWFLJiTQ=
 github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/billing v1.3.42/go.mod h1:i1PFMAYpTEuLxKXvty9UOrDN9iPOl4PnaA52AQiTA6E=
 github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.42/go.mod h1:r5r4xbfxSaeR04b166HGsBa/R4U3SueirEUpXGuw+Q0=
-github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.47 h1:0C478VCu6PT1Tisl34Y9NWRPEQLZw2MtCC9feOuKqb8=
-github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.47/go.mod h1:r5r4xbfxSaeR04b166HGsBa/R4U3SueirEUpXGuw+Q0=
+github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.149 h1:rIoeeQt8842sJj/UQuZmSrQqPuXYvy1LeS9O6BN20T8=
+github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.149/go.mod h1:r5r4xbfxSaeR04b166HGsBa/R4U3SueirEUpXGuw+Q0=
 github.com/testcontainers/testcontainers-go v0.43.0 h1:oEQx5MW2DGd9z3AeEQfB2lPM0eLs7ztyaGRu75bFo5A=
 github.com/testcontainers/testcontainers-go v0.43.0/go.mod h1:+VxkT2NQnKOZPKi6praMuMKYHYyOGXr0XSBSlSMCzFo=
 github.com/tjfoc/gmsm v1.3.2/go.mod h1:HaUcFuY0auTiaHB9MHFGCPx5IaLhTUd2atbCFBQXn9w=
