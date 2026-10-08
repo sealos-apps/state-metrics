@@ -32,7 +32,9 @@ tls:
 # Authentication configuration for metrics endpoint
 auth:
   enabled: true
-  allowedServiceAccounts: []
+  allowedServiceAccounts:
+    - name: vmagent-vm-stack-victoria-metrics-k8s-stack
+      namespace: vm
 
 vmServiceScrape:
   enabled: true
