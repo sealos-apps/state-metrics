@@ -56,13 +56,13 @@ auth:
   # When auth is enabled, these ServiceAccounts will be granted access via ClusterRoleBinding
   # Note: ServiceAccounts with existing permissions (e.g., cluster-admin) can also access metrics
   # Use the following command to check permissions:
-  # kubectl auth can-i get /metrics --as=system:serviceaccount:vm:vmagent-victoria-metrics-k8s-stack
+  # kubectl auth can-i get /metrics --as=system:serviceaccount:vm:vmagent-vm-stack-victoria-metrics-k8s-stack
   allowedServiceAccounts:
     # - name: prometheus
     #   namespace: monitoring
     # - name: prometheus-kube-prometheus-prometheus
     #   namespace: monitoring
-    # - name: vmagent-victoria-metrics-k8s-stack
+    # - name: vmagent-vm-stack-victoria-metrics-k8s-stack
     #   namespace: vm
 
 serviceMonitor:
