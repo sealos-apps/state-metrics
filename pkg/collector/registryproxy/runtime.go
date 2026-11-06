@@ -216,8 +216,7 @@ func splitRegistryHostPort(raw, original string) (string, int, error) {
 		return host, portNum, nil
 	}
 
-	var addrErr *net.AddrError
-	if errors.As(err, &addrErr) {
+	if addrErr, ok := errors.AsType[*net.AddrError](err); ok {
 		switch addrErr.Err {
 		case "missing port in address":
 			return "", 0, fmt.Errorf(

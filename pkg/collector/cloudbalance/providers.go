@@ -58,10 +58,10 @@ func QueryBalance(account AccountConfig) (float64, error) {
 // queryAlibabaCloudBalance queries Alibaba Cloud balance
 func queryAlibabaCloudBalance(accessKeyID, accessKeySecret, regionID string) (string, error) {
 	config := &openapiclient.Config{
-		AccessKeyId:     tea.String(accessKeyID),
-		AccessKeySecret: tea.String(accessKeySecret),
-		RegionId:        tea.String(regionID),
-		Endpoint:        tea.String("business.aliyuncs.com"),
+		AccessKeyId:     new(accessKeyID),
+		AccessKeySecret: new(accessKeySecret),
+		RegionId:        new(regionID),
+		Endpoint:        new("business.aliyuncs.com"),
 	}
 
 	bssClient, err := bssclient.NewClient(config)
@@ -133,8 +133,7 @@ func queryTencentCloudBalance(secretID, secretKey, regionID string) (string, err
 	request := billing2.NewDescribeAccountBalanceRequest()
 	response, err := client.DescribeAccountBalance(request)
 
-	var tencentCloudSDKError *tencentErr.TencentCloudSDKError
-	if errors.As(err, &tencentCloudSDKError) {
+	if _, ok := errors.AsType[*tencentErr.TencentCloudSDKError](err); ok {
 		return "", fmt.Errorf("API error: %w", err)
 	}
 

@@ -280,8 +280,7 @@ func parseDomainTarget(value string) (DomainTarget, error) {
 		return newDomainTarget(host, portNum, value)
 	}
 
-	var addrErr *net.AddrError
-	if errors.As(err, &addrErr) {
+	if addrErr, ok := errors.AsType[*net.AddrError](err); ok {
 		switch addrErr.Err {
 		case "missing port in address":
 			return newDomainTarget(raw, defaultHTTPSPort, value)

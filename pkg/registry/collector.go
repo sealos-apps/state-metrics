@@ -234,14 +234,16 @@ func (m *metricWithInstance) Write(out *dto.Metric) error {
 
 	// Add instance label
 	out.Label = append(out.Label, &dto.LabelPair{
-		Name:  stringPtr("instance"),
-		Value: stringPtr(m.instance),
+		Name:  new("instance"),
+		Value: new(m.instance),
 	})
 
 	return nil
 }
 
 // stringPtr returns a pointer to the given string
+//
+//go:fix inline
 func stringPtr(s string) *string {
-	return &s
+	return new(s)
 }
