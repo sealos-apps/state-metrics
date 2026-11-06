@@ -39,28 +39,28 @@ jobs:
     steps:
       - name: Login to GitHub Container Registry
         if: ${{ github.event_name != 'pull_request' && github.actor != 'dependabot[bot]' }}
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Login to DockerHub
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         if: ${{ github.event_name != 'pull_request' && github.actor != 'dependabot[bot]' && env.DOCKERHUB_REPO }}
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: |
             ${{ env.DOCKERHUB_REPO }}
@@ -68,7 +68,7 @@ jobs:
 
       - name: Build for ${{ matrix.arch }}
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           labels: ${{ steps.meta.outputs.labels }}
@@ -82,7 +82,7 @@ jobs:
           touch "${{ runner.temp }}/digests/${digest#sha256:}"
 
       - name: Upload digest
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: digests-${{ matrix.arch }}
           path: ${{ runner.temp }}/digests/*
@@ -98,32 +98,32 @@ jobs:
     if: ${{ github.event_name != 'pull_request' && github.actor != 'dependabot[bot]' }}
     steps:
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Login to DockerHub
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         if: ${{ env.DOCKERHUB_REPO }}
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Download digests
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           path: ${{ runner.temp }}/digests
           pattern: digests-*
           merge-multiple: true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: |
             ${{ env.DOCKERHUB_REPO }}
@@ -158,16 +158,16 @@ jobs:
     if: ${{ github.event_name != 'pull_request' && github.actor != 'dependabot[bot]' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: install cache images tools
         run: |
           sudo bash .github/scripts/install.sh
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Prepare cluster image list
         id: cluster_image_targets
@@ -188,7 +188,7 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: ${{ steps.cluster_image_targets.outputs.images }}
           tags: |
@@ -209,21 +209,21 @@ jobs:
           sudo sealos registry save --registry-dir=registry_arm64 --arch arm64 .
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Login to DockerHub
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         if: ${{ env.DOCKERHUB_REPO }}
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build images
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: deploy
           file: deploy/Kubefile
@@ -246,7 +246,7 @@ jobs:
         arch: [amd64, arm64]
     steps:
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -254,7 +254,7 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: ${{ env.GHCR_REPO }}-cluster
           tags: |
@@ -284,12 +284,21 @@ jobs:
           curl -fsSL https://gosspublic.alicdn.com/ossutil/install.sh | sudo bash
 
       - name: Sync to OSS
+        env:
+          IMAGE_VERSION: ${{ steps.meta.outputs.version }}
+          REF_NAME_INPUT: ${{ github.ref_name }}
+          REF_TYPE_INPUT: ${{ github.ref_type }}
+          MATRIX_ARCH: ${{ matrix.arch }}
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_BUCKET: ${{ vars.OSS_BUCKET }}
         run: |
           set -euo pipefail
-          IMAGE_TAG="${{ steps.meta.outputs.version }}"
+          IMAGE_TAG="${IMAGE_VERSION}"
           SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
-          REF_NAME="${{ github.ref_name }}"
-          REF_TYPE="${{ github.ref_type }}"
+          REF_NAME="${REF_NAME_INPUT}"
+          REF_TYPE="${REF_TYPE_INPUT}"
           SAFE_REF_NAME="${REF_NAME//\//-}"
 
           if [[ "${REF_TYPE}" == "tag" && "${REF_NAME}" == v* ]]; then
@@ -300,17 +309,17 @@ jobs:
             OSS_TAG="${SAFE_REF_NAME}-${SHORT_SHA}"
           fi
 
-          TAR_NAME="release-assets/state-metrics-cluster-${IMAGE_TAG}-${{ matrix.arch }}.tar.gz"
-          OSS_TAR_NAME="state-metrics-cluster-${OSS_TAG}-${{ matrix.arch }}.tar.gz"
+          TAR_NAME="release-assets/state-metrics-cluster-${IMAGE_TAG}-${MATRIX_ARCH}.tar.gz"
+          OSS_TAR_NAME="state-metrics-cluster-${OSS_TAG}-${MATRIX_ARCH}.tar.gz"
 
           md5sum "${TAR_NAME}" > "${TAR_NAME}.md5"
-          ossutil64 cp -f -e "${{ secrets.OSS_ENDPOINT }}" \
-            -i "${{ secrets.OSS_ACCESS_KEY_ID }}" \
-            -k "${{ secrets.OSS_ACCESS_KEY_SECRET }}" \
+          ossutil64 cp -f -e "${OSS_ENDPOINT}" \
+            -i "${OSS_ACCESS_KEY_ID}" \
+            -k "${OSS_ACCESS_KEY_SECRET}" \
             "${TAR_NAME}" \
-            "oss://${{ vars.OSS_BUCKET }}/${OSS_PREFIX}/${OSS_TAR_NAME}"
-          ossutil64 cp -f -e "${{ secrets.OSS_ENDPOINT }}" \
-            -i "${{ secrets.OSS_ACCESS_KEY_ID }}" \
-            -k "${{ secrets.OSS_ACCESS_KEY_SECRET }}" \
+            "oss://${OSS_BUCKET}/${OSS_PREFIX}/${OSS_TAR_NAME}"
+          ossutil64 cp -f -e "${OSS_ENDPOINT}" \
+            -i "${OSS_ACCESS_KEY_ID}" \
+            -k "${OSS_ACCESS_KEY_SECRET}" \
             "${TAR_NAME}.md5" \
-            "oss://${{ vars.OSS_BUCKET }}/${OSS_PREFIX}/${OSS_TAR_NAME}.md5"
+            "oss://${OSS_BUCKET}/${OSS_PREFIX}/${OSS_TAR_NAME}.md5"

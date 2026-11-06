@@ -925,7 +925,8 @@ func startPostgresContainer(t *testing.T, ctx context.Context) *testPostgresData
 }
 
 func startSharedPostgres(ctx context.Context) error {
-	waitStrategy := wait.ForListeningPort("5432/tcp").
+	waitStrategy := wait.ForLog("database system is ready to accept connections").
+		WithOccurrence(2).
 		WithStartupTimeout(90 * time.Second)
 
 	ctr, err := testcontainers.Run(

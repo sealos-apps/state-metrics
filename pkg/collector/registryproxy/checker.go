@@ -351,7 +351,7 @@ func newRegistryTransport(
 }
 
 func registryTLSConfig(registry monitoredRegistry, base *tls.Config) *tls.Config {
-	tlsConfig := &tls.Config{}
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
 	if base != nil {
 		tlsConfig = base.Clone()
 	}
