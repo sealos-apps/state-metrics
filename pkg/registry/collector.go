@@ -240,4 +240,3 @@ func (m *metricWithInstance) Write(out *dto.Metric) error {
 
 	return nil
 }
-
