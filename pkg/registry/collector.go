@@ -241,9 +241,3 @@ func (m *metricWithInstance) Write(out *dto.Metric) error {
 	return nil
 }
 
-// stringPtr returns a pointer to the given string
-//
-//go:fix inline
-func stringPtr(s string) *string {
-	return new(s)
-}
