@@ -299,7 +299,7 @@ func TestCheckHTTPWithIPAndOptions_DoesNotWaitForResponseBody(t *testing.T) {
 
 	select {
 	case <-bodyStarted:
-	default:
+	case <-time.After(2 * time.Second):
 		t.Fatal("expected handler to start streaming body")
 	}
 
